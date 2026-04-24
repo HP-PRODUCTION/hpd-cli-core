@@ -1,0 +1,15 @@
+#!/bin/bash
+# HPD Platform Engine Wrapper
+
+# Determine the real script directory (handles symlinks)
+REAL_SCRIPT_PATH=$(readlink -f "${BASH_SOURCE[0]}")
+SCRIPT_DIR="$( cd "$( dirname "$REAL_SCRIPT_PATH" )" &> /dev/null && pwd )"
+
+# Activate virtual environment if it exists
+if [ -d "$SCRIPT_DIR/venv" ]; then
+    source "$SCRIPT_DIR/venv/bin/activate"
+fi
+
+# Run the python CLI in the project root context
+cd "$SCRIPT_DIR" || exit 1
+python3 -m hpd_cli.cli "$@"

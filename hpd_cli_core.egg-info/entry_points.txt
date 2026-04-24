@@ -1,0 +1,2 @@
+[console_scripts]
+hpd = hpd_cli.cli:main

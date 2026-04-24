@@ -1,0 +1,21 @@
+[project]
+name = "hpd-cli-core"
+version = "0.1.0"
+description = "HPD Control Plane CLI"
+authors = [{name = "HPD Architect"}]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "rich>=10.0.0",
+    "PyYAML>=6.0",
+    "SQLAlchemy>=1.4.0",
+    "python-dotenv>=0.19.0",
+    "requests>=2.26.0"
+]
+
+[project.scripts]
+hpd = "hpd_cli.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
