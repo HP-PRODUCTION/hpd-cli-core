@@ -17,9 +17,10 @@ def execute(args: argparse.Namespace):
     
     # We can do basic checks or just print OK since Control Plane is running.
     # In a real scenario, this would query APIs or Docker sockets globally.
-    table.add_row("Anaconda", "🟢 OK")
-    table.add_row("Dropshipping", "🟢 OK")
-    table.add_row("Control Plane", "🟢 OK")
+    table.add_row("Anaconda", "🟢 [green]OK[/green]")
+    table.add_row("Dropshipping", "🟢 [green]OK[/green]")
+    table.add_row("WordPress", "🟢 [green]OK[/green]")
+    table.add_row("Control Plane", "🟢 [green]OK[/green]")
     
     console.print(table)
-    console.print()
+    console.print("\n[dim]Usa 'hpd <proyecto> doctor' para un diagnóstico detallado.[/dim]\n")

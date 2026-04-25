@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-from hpd_cli.commands import init, ai, etl, deploy, db, repo, docs, services, backup, status
+from hpd_cli.commands import init, ai, etl, deploy, db, repo, docs, services, backup, status, integrate
 import os
 import importlib.util
 
@@ -44,6 +44,7 @@ def main():
     services.setup_parser(subparsers)
     backup.setup_parser(subparsers)
     status.setup_parser(subparsers)
+    integrate.setup_parser(subparsers)
     
     # Load Plugins dynamically
     load_plugins(subparsers)
