@@ -2,9 +2,17 @@ import os
 import subprocess
 import json
 from datetime import datetime
-from sqlalchemy import text
 from hpd_cli.config import ensure_config
 from hpd_cli import logger
+
+
+def _sql_text(query):
+    try:
+        from sqlalchemy import text
+    except ImportError:
+        logger.error("SQLAlchemy no esta instalado. Instala dependencias con: python3 -m pip install -e .")
+        return None
+    return text(query)
 
 def setup_parser(subparsers):
     parser = subparsers.add_parser("etl", help="Comandos de ETL y Observabilidad")
@@ -85,7 +93,7 @@ def execute(args):
             params["p"] = args.pipeline
         query += " LIMIT 10"
         
-        results = conn.execute(text(query), params).mappings().all()
+        results = conn.execute(_sql_text(query), params).mappings().all()
         
         print("\n📊 REPORTE DE CALIDAD (Últimas ejecuciones)")
         print("-" * 100)
@@ -112,7 +120,7 @@ def execute(args):
         query += " ORDER BY rejected_at DESC LIMIT :l"
         params["l"] = args.limit
         
-        results = conn.execute(text(query), params).mappings().all()
+        results = conn.execute(_sql_text(query), params).mappings().all()
         
         print(f"\n🗑️ ÚLTIMOS {args.limit} RECHAZOS")
         print("-" * 100)
@@ -133,7 +141,7 @@ def execute(args):
                 EXTRACT(EPOCH FROM (now() - last_value))/3600 as hours_since_last_sync
             FROM analytics.etl_watermarks
         """
-        results = conn.execute(text(query)).mappings().all()
+        results = conn.execute(_sql_text(query)).mappings().all()
         
         print("\n🏥 ESTADO DE SALUD DEL ETL")
         print("-" * 60)
@@ -163,7 +171,7 @@ def execute(args):
             query += " AND pipeline_name = :p"
         query += " GROUP BY 1"
         
-        results = conn.execute(text(query), {"p": args.pipeline} if args.pipeline else {}).mappings().all()
+        results = conn.execute(_sql_text(query), {"p": args.pipeline} if args.pipeline else {}).mappings().all()
         
         print("\n📈 MÉTRICAS DE RENDIMIENTO (Últimos 7 días)")
         print("-" * 80)
@@ -195,7 +203,7 @@ def execute(args):
         if not conn: return
         
         if args.wm_command == "show":
-            results = conn.execute(text("SELECT * FROM analytics.etl_watermarks ORDER BY pipeline_name")).mappings().all()
+            results = conn.execute(_sql_text("SELECT * FROM analytics.etl_watermarks ORDER BY pipeline_name")).mappings().all()
             print("\n📌 PUNTOS DE SINCRONIZACIÓN (Watermarks)")
             print("-" * 60)
             print(f"{'PIPELINE':<25} | {'ÚLTIMO VALOR'}")
@@ -207,7 +215,7 @@ def execute(args):
         elif args.wm_command == "reset":
             try:
                 conn.execute(
-                    text("UPDATE analytics.etl_watermarks SET last_value = :v WHERE pipeline_name = :p"),
+                    _sql_text("UPDATE analytics.etl_watermarks SET last_value = :v WHERE pipeline_name = :p"),
                     {"v": args.to, "p": args.pipeline}
                 )
                 conn.commit()
@@ -219,7 +227,7 @@ def execute(args):
         conn = _get_db_conn()
         if args.history:
             if not conn: return
-            results = conn.execute(text("SELECT timestamp, overall_status FROM analytics.doctor_log ORDER BY timestamp DESC LIMIT 10")).mappings().all()
+            results = conn.execute(_sql_text("SELECT timestamp, overall_status FROM analytics.doctor_log ORDER BY timestamp DESC LIMIT 10")).mappings().all()
             print("\n📈 TENDENCIA DE SALUD (Historial Doctor)")
             print("-" * 50)
             print(f"{'FECHA Y HORA':<20} | {'ESTADO'}")
@@ -242,16 +250,16 @@ def execute(args):
         if conn:
             # 2. Alembic
             try:
-                ver = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                ver = conn.execute(_sql_text("SELECT version_num FROM alembic_version")).scalar()
                 checks.append({"name": "Alembic migration head", "status": "OK", "detail": f"{ver} (head)"})
-            except:
+            except Exception:
                 checks.append({"name": "Alembic migration head", "status": "WARN", "detail": "alembic_version table missing"})
 
             # 3. Core Tables
             try:
-                tables = conn.execute(text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name IN ('fact_indicadores', 'pipeline_metrics', 'pipeline_rejections')")).scalar()
+                tables = conn.execute(_sql_text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name IN ('fact_indicadores', 'pipeline_metrics', 'pipeline_rejections')")).scalar()
                 checks.append({"name": "Core tables", "status": "OK" if tables >= 3 else "WARN", "detail": "fact_indicadores, metrics, rejections"})
-            except:
+            except Exception:
                 checks.append({"name": "Core tables", "status": "FAIL", "detail": "Analytics schema inaccessible"})
 
         # 4. Airflow
@@ -261,14 +269,14 @@ def execute(args):
             web = "airflow_webserver" in ps
             checks.append({"name": "Airflow scheduler", "status": "OK" if sched else "FAIL", "detail": "running" if sched else "stopped"})
             checks.append({"name": "Airflow webserver", "status": "OK" if web else "FAIL", "detail": "http://localhost:8080" if web else "stopped"})
-        except:
+        except Exception:
             checks.append({"name": "Airflow", "status": "FAIL", "detail": "Docker daemon unreachable"})
 
         # 5. Data Freshness & Quality
         if conn:
             try:
-                stale = conn.execute(text("SELECT EXTRACT(EPOCH FROM (now() - MAX(last_value)))/3600 FROM analytics.etl_watermarks")).scalar()
-                last_run = conn.execute(text("SELECT status, rows_extracted, finished_at FROM analytics.pipeline_metrics ORDER BY finished_at DESC LIMIT 1")).mappings().first()
+                stale = conn.execute(_sql_text("SELECT EXTRACT(EPOCH FROM (now() - MAX(last_value)))/3600 FROM analytics.etl_watermarks")).scalar()
+                last_run = conn.execute(_sql_text("SELECT status, rows_extracted, finished_at FROM analytics.pipeline_metrics ORDER BY finished_at DESC LIMIT 1")).mappings().first()
                 
                 fresh_status = "OK"
                 fresh_detail = f"{int(stale)}h stale" if stale else "No data"
@@ -283,19 +291,19 @@ def execute(args):
                 
                 checks.append({"name": "Data freshness", "status": fresh_status, "detail": fresh_detail})
                 
-                qual = conn.execute(text("SELECT rejection_rate FROM analytics.vw_quality_audit LIMIT 1")).scalar()
+                qual = conn.execute(_sql_text("SELECT rejection_rate FROM analytics.vw_quality_audit LIMIT 1")).scalar()
                 q_status = "OK"
                 if qual and float(qual) > 5.0: q_status = "FAIL"
                 elif qual and float(qual) > 1.0: q_status = "WARN"
                 checks.append({"name": "Rejection rate", "status": q_status, "detail": f"{float(qual or 0):.1f}% últimos 7 días"})
-            except:
+            except Exception:
                 checks.append({"name": "Data Health", "status": "WARN", "detail": "Metrics/Watermarks view missing"})
 
             # 6. RLS
             try:
-                rls = conn.execute(text("SELECT count(*) FROM pg_policies WHERE schemaname = 'analytics'")).scalar()
+                rls = conn.execute(_sql_text("SELECT count(*) FROM pg_policies WHERE schemaname = 'analytics'")).scalar()
                 checks.append({"name": "RLS policies", "status": "OK" if rls > 0 else "WARN", "detail": f"enabled + {rls} policies"})
-            except: pass
+            except Exception: pass
 
         # Persist results
         overall = "OK"
@@ -306,11 +314,11 @@ def execute(args):
             try:
                 import json as json_lib
                 conn.execute(
-                    text("INSERT INTO analytics.doctor_log (overall_status, checks_json) VALUES (:s, :j)"),
+                    _sql_text("INSERT INTO analytics.doctor_log (overall_status, checks_json) VALUES (:s, :j)"),
                     {"s": overall, "j": json_lib.dumps(checks)}
                 )
                 conn.commit()
-            except: pass
+            except Exception: pass
 
         # OUTPUT RENDERING
         if args.json:

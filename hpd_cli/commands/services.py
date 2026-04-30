@@ -66,7 +66,8 @@ def perform_deep_health_check():
                 )
                 if result.stdout.strip() == "running":
                     docker_status = "[green]RUNNING[/green]"
-            except: pass
+            except (FileNotFoundError, subprocess.CalledProcessError):
+                pass
 
             # 2. Deep Checks
             conn_status = "[red]FAIL[/red]"
@@ -98,7 +99,8 @@ def perform_deep_health_check():
                     if resp.status_code < 500:
                         conn_status = "[green]SUCCESS[/green]"
                         metrics = f"HTTP {resp.status_code}"
-                except: pass
+                except (FileNotFoundError, subprocess.CalledProcessError, json.JSONDecodeError):
+                    pass
                 
             elif svc["type"] == "process" and docker_status == "[green]RUNNING[/green]":
                 conn_status = "[green]OK[/green]"

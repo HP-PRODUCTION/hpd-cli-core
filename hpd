@@ -5,8 +5,8 @@
 REAL_SCRIPT_PATH=$(readlink -f "${BASH_SOURCE[0]}")
 SCRIPT_DIR="$( cd "$( dirname "$REAL_SCRIPT_PATH" )" &> /dev/null && pwd )"
 
-# Activate virtual environment if it exists
-if [ -d "$SCRIPT_DIR/venv" ]; then
+# Activate virtual environment if it exists and is complete
+if [ -f "$SCRIPT_DIR/venv/bin/activate" ]; then
     source "$SCRIPT_DIR/venv/bin/activate"
 fi
 

@@ -18,11 +18,11 @@ class GeminiProvider(BaseProvider):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("Falta GEMINI_API_KEY")
-        
+
         genai.configure(api_key=api_key)
         model_name = self.model_name or "gemini-1.5-flash"
         model = genai.GenerativeModel(model_name)
-        
+
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
         response = model.generate_content(full_prompt)
         return response.text
@@ -55,29 +55,61 @@ class CloudflareProvider(BaseProvider):
         account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
         if not api_token or not account_id:
             raise ValueError("Faltan credenciales de Cloudflare")
-        
+
         # Gateway ID from config would be better, but using default for now
         url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/meta/llama-3-8b-instruct"
         headers = {"Authorization": f"Bearer {api_token}"}
-        
+
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
         response = requests.post(url, headers=headers, json={"prompt": full_prompt})
-        
+
         if response.status_code != 200:
             raise Exception(f"Cloudflare AI Error: {response.text}")
-            
+
         return response.json()["result"]["response"]
 
     def health_check(self):
         return all([os.getenv("CLOUDFLARE_API_TOKEN"), os.getenv("CLOUDFLARE_ACCOUNT_ID")])
 
+class OllamaProvider(BaseProvider):
+    def generate(self, prompt, context=None):
+        import requests
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        model_name = self.model_name or os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+
+        full_prompt = f"{context}\n\n{prompt}" if context else prompt
+
+        try:
+            response = requests.post(
+                f"{base_url}/api/generate",
+                json={
+                    "model": model_name,
+                    "prompt": full_prompt,
+                    "stream": False,
+                },
+                timeout=120
+            )
+            response.raise_for_status()
+            return response.json().get("response", "")
+        except Exception as e:
+            raise Exception(f"Ollama Error: {e}")
+
+    def health_check(self):
+        import requests
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        try:
+            response = requests.get(f"{base_url}/api/tags", timeout=2)
+            return response.status_code == 200
+        except (requests.ConnectionError, requests.Timeout, Exception):
+            return False
+
 class PolicyEngine:
     def __init__(self):
         self.routing_rules = {
-            "code_generate": ["openai", "anthropic", "gemini", "cloudflare"],
-            "architecture_review": ["anthropic", "openai", "gemini"],
-            "fast_lookup": ["cloudflare", "gemini", "openai"],
-            "default": ["gemini", "openai", "anthropic", "cloudflare"]
+            "code_generate": ["openai", "anthropic", "gemini", "ollama", "cloudflare"],
+            "architecture_review": ["anthropic", "openai", "gemini", "ollama"],
+            "fast_lookup": ["ollama", "cloudflare", "gemini", "openai"],
+            "default": ["gemini", "openai", "anthropic", "ollama", "cloudflare"]
         }
 
     def get_providers(self, task_type):
@@ -94,7 +126,7 @@ class UsageTracker:
             config = load_config()
             log_dir = config.get("directories", {}).get("logs", "data/logs") if config else "data/logs"
             log_file = os.path.join(log_dir, "ai_usage.jsonl")
-            
+
         self.log_file = log_file
         os.makedirs(os.path.dirname(self.log_file), exist_ok=True)
 
@@ -116,14 +148,15 @@ class AIRouter:
             "gemini": GeminiProvider(),
             "openai": OpenAIProvider(),
             "anthropic": AnthropicProvider(),
-            "cloudflare": CloudflareProvider()
+            "cloudflare": CloudflareProvider(),
+            "ollama": OllamaProvider()
         }
         self.policy_engine = PolicyEngine()
         self.tracker = UsageTracker()
 
     def generate_content(self, prompt, context=None, task_type="default", policy="balanced"):
         target_providers = self.policy_engine.get_providers(task_type)
-        
+
         last_error = None
         for provider_name in target_providers:
             start_time = time.time()
@@ -131,13 +164,13 @@ class AIRouter:
                 provider = self.providers.get(provider_name)
                 if not provider:
                     continue
-                
+
                 if not provider.health_check():
                     continue
 
                 logger.info(f"Ruteando a {provider_name} (Tarea: {task_type})...")
                 response = provider.generate(prompt, context)
-                
+
                 latency = time.time() - start_time
                 self.tracker.log_request(provider_name, task_type, latency, "SUCCESS")
                 return response
@@ -148,7 +181,7 @@ class AIRouter:
                 logger.warning(f"Fallo en proveedor {provider_name}: {e}")
                 last_error = e
                 continue
-        
+
         raise Exception(f"Todos los proveedores fallaron o no están configurados. Último error: {last_error}")
 
     def get_status(self):
@@ -161,7 +194,7 @@ class AIRouter:
         """Calcula métricas básicas desde los logs"""
         if not os.path.exists(self.tracker.log_file):
             return None
-            
+
         metrics = {}
         with open(self.tracker.log_file, "r") as f:
             for line in f:
@@ -169,15 +202,24 @@ class AIRouter:
                 p = data["provider"]
                 if p not in metrics:
                     metrics[p] = {"requests": 0, "success": 0, "latencies": []}
-                
+
                 metrics[p]["requests"] += 1
                 if data["status"] == "SUCCESS":
                     metrics[p]["success"] += 1
                 metrics[p]["latencies"].append(data["latency_ms"])
-        
+
         for p in metrics:
             m = metrics[p]
             m["avg_latency"] = round(sum(m["latencies"]) / len(m["latencies"]), 2) if m["latencies"] else 0
             m["success_rate"] = round((m["success"] / m["requests"]) * 100, 2) if m["requests"] else 0
-            
+
         return metrics
+
+# Singleton instance
+_router_instance = None
+
+def get_ai_router():
+    global _router_instance
+    if _router_instance is None:
+        _router_instance = AIRouter()
+    return _router_instance

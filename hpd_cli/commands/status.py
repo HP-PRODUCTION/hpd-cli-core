@@ -1,6 +1,9 @@
 import argparse
+from pathlib import Path
+
 from rich.console import Console
 from rich.table import Table
+from hpd_cli.commands.serverize import PROJECTS
 
 def setup_parser(subparsers: argparse._SubParsersAction):
     parser = subparsers.add_parser("status", help="Muestra el estado global de la infraestructura HPD")
@@ -13,14 +16,16 @@ def execute(args: argparse.Namespace):
     
     table = Table(show_header=True, header_style="bold magenta", box=None)
     table.add_column("Proyecto", style="bold")
+    table.add_column("Tipo")
     table.add_column("Estado", justify="right")
     
-    # We can do basic checks or just print OK since Control Plane is running.
-    # In a real scenario, this would query APIs or Docker sockets globally.
-    table.add_row("Anaconda", "🟢 [green]OK[/green]")
-    table.add_row("Dropshipping", "🟢 [green]OK[/green]")
-    table.add_row("WordPress", "🟢 [green]OK[/green]")
-    table.add_row("Control Plane", "🟢 [green]OK[/green]")
+    for name, config in PROJECTS.items():
+        path = Path(config["path"])
+        if path.exists():
+            status = "[green]OK[/green]"
+        else:
+            status = "[red]MISSING[/red]"
+        table.add_row(name, config.get("kind", "unknown"), status)
     
     console.print(table)
     console.print("\n[dim]Usa 'hpd <proyecto> doctor' para un diagnóstico detallado.[/dim]\n")

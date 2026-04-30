@@ -1,4 +1,5 @@
 import os
+import json
 from hpd_cli.config import ensure_config
 from hpd_cli import logger
 
@@ -6,33 +7,79 @@ def setup_parser(subparsers):
     parser = subparsers.add_parser("ai", help="Comandos de IA de HPD")
     ai_subparsers = parser.add_subparsers(dest="ai_command", help="Subcomandos de IA")
     ai_subparsers.required = True
-    
+
     gen_parser = ai_subparsers.add_parser("generate", help="Generar codigo con IA")
     gen_parser.add_argument("type", choices=["module"], help="Tipo de componente a generar")
     gen_parser.add_argument("name", help="Nombre del componente")
-    
+
     ask_parser = ai_subparsers.add_parser("ask", help="Preguntar al asistente de IA")
     ask_parser.add_argument("query", nargs="+", help="Tu pregunta para el AI")
-    ask_parser.add_argument("--type", choices=["code_generate", "architecture_review", "fast_lookup"], default="default", help="Tipo de tarea para enrutamiento")
+    ask_parser.add_argument("-p", "--provider", default="gemini_flash", help="Proveedor de IA (gemini, openai, flash, etc.)")
+    ask_parser.add_argument("-c", "--context", choices=["none", "repo", "project", "fs"], default="none", help="Nivel de contexto a enviar")
+    ask_parser.add_argument("--path", default=".", help="Directorio base para --context fs")
+    ask_parser.add_argument("--depth", type=int, default=1, help="Profundidad de escaneo para --context fs")
+    ask_parser.add_argument("--exclude", default="", help="Patrones separados por coma para excluir en --context fs")
+    ask_parser.add_argument("--cache", action="store_true", help="Usar cache local para --context fs")
+    ask_parser.add_argument("--type", choices=["code_generate", "architecture_review", "fast_lookup"], default="default", help="Tipo de tarea para enrutamiento (legacy)")
+
+    ai_subparsers.add_parser("ls", help="Listar capacidades IA disponibles")
+
+    repo_parser = ai_subparsers.add_parser("repo", help="Analisis local-aware de repositorios")
+    repo_subparsers = repo_parser.add_subparsers(dest="repo_command", help="Subcomandos de repo IA")
+    repo_subparsers.required = True
+
+    scan_parser = repo_subparsers.add_parser("scan", help="Escanear proyectos locales")
+    scan_parser.add_argument("--path", default=".", help="Directorio base a escanear")
+    scan_parser.add_argument("--depth", type=int, default=1, help="Profundidad maxima de escaneo")
+    scan_parser.add_argument("--exclude", default="", help="Patrones separados por coma para excluir")
+    scan_parser.add_argument("--cache", action="store_true", help="Usar cache local del escaneo")
+    scan_parser.add_argument("--json", action="store_true", help="Emitir salida JSON")
+
+    analyze_parser = repo_subparsers.add_parser("analyze", help="Detectar repositorios de datos/analitica")
+    analyze_parser.add_argument("--path", default=".", help="Directorio base a escanear")
+    analyze_parser.add_argument("--depth", type=int, default=1, help="Profundidad maxima de escaneo")
+    analyze_parser.add_argument("--exclude", default="", help="Patrones separados por coma para excluir")
+    analyze_parser.add_argument("--cache", action="store_true", help="Usar cache local del escaneo")
+    analyze_parser.add_argument("--json", action="store_true", help="Emitir salida JSON")
+
+    patch_parser = ai_subparsers.add_parser("patch", help="Aplicar un parche inteligente a un archivo")
+    patch_parser.add_argument("file", help="Archivo a modificar")
+    patch_parser.add_argument("instruction", nargs="+", help="Instrucción de lo que quieres cambiar")
 
     ai_subparsers.add_parser("status", help="Ver estado del AI Router y proveedores")
-    
+
     compare_parser = ai_subparsers.add_parser("compare", help="Comparar respuestas entre proveedores")
     compare_parser.add_argument("query", nargs="+", help="Tu pregunta para comparar")
 
     ai_subparsers.add_parser("doctor", help="Diagnóstico de conectividad con proveedores")
-    
+
     parser.set_defaults(func=execute)
 
 def execute(args):
     config = ensure_config()
-    
+
     if args.ai_command == "generate":
         if args.type == "module":
             generate_module(args.name, config)
     elif args.ai_command == "ask":
         question = " ".join(args.query)
-        ask_ai(question, config, task_type=getattr(args, "type", "default"))
+        ask_ai(question, config,
+               provider=getattr(args, "provider", "gemini_flash"),
+               context_level=getattr(args, "context", "none"),
+               fs_path=getattr(args, "path", "."),
+               fs_depth=getattr(args, "depth", 1),
+               fs_exclude=parse_excludes(getattr(args, "exclude", "")),
+               fs_cache=getattr(args, "cache", False),
+               task_type=getattr(args, "type", "default"))
+    elif args.ai_command == "ls":
+        list_ai_capabilities()
+    elif args.ai_command == "repo":
+        if args.repo_command == "scan":
+            repo_scan(args.path, args.depth, parse_excludes(args.exclude), args.cache, args.json)
+        elif args.repo_command == "analyze":
+            repo_analyze(args.path, args.depth, parse_excludes(args.exclude), args.cache, args.json)
+    elif args.ai_command == "patch":
+        patch_file(args.file, args.instruction, config)
     elif args.ai_command == "status":
         show_status()
     elif args.ai_command == "compare":
@@ -41,34 +88,145 @@ def execute(args):
     elif args.ai_command == "doctor":
         run_doctor()
 
-def ask_ai(question, config, task_type="default"):
-    logger.info(f"Analizando tu pregunta con HPD AI Router (Tarea: {task_type})...")
+def list_ai_capabilities():
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+    table = Table(title="HPD AI Local-Aware", header_style="bold cyan")
+    table.add_column("Comando", style="magenta")
+    table.add_column("Proposito")
+
+    table.add_row("hpd ai status", "Estado de proveedores y metricas")
+    table.add_row("hpd ai doctor", "Diagnostico de credenciales, permisos y latencia")
+    table.add_row("hpd ai repo scan", "Escanea proyectos locales con marcadores tecnicos")
+    table.add_row("hpd ai repo analyze", "Detecta repositorios de datos/BI/ETL")
+    table.add_row("hpd ai ask --context fs", "Pregunta al LLM con contexto del filesystem local")
+    table.add_row("hpd ai patch", "Edicion asistida con diff y aprobacion manual")
+
+    console.print(table)
+
+def parse_excludes(value):
+    if not value:
+        return []
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+def repo_scan(path, depth=1, exclude=None, use_cache=False, as_json=False):
+    from rich.console import Console
+    from rich.table import Table
+    from hpd_cli.ai.context import build_filesystem_context
+
+    ctx = build_filesystem_context(path, depth=depth, exclude=exclude, use_cache=use_cache)
+    if as_json:
+        print(json.dumps(ctx, indent=2, ensure_ascii=False))
+        return
+
+    console = Console()
+    cache_note = " cache" if ctx.get("cache_hit") else ""
+    table = Table(title=f"Repos encontrados en {ctx['base_path']} (depth={ctx['depth']}{cache_note})", header_style="bold cyan")
+    table.add_column("Nombre", style="magenta")
+    table.add_column("Path")
+    table.add_column("Git")
+    table.add_column("Python")
+    table.add_column("Docker")
+    table.add_column("Score", justify="right")
+
+    for repo in ctx["repos"]:
+        table.add_row(
+            repo["name"],
+            repo["path"],
+            "yes" if repo["has_git"] else "no",
+            "yes" if repo["has_pyproject"] or repo["has_requirements"] else "no",
+            "yes" if repo["has_docker"] else "no",
+            str(repo["data_score"]),
+        )
+
+    console.print(table)
+    if not ctx["repos"]:
+        console.print("[yellow]No se encontraron proyectos con marcadores reconocidos.[/yellow]")
+
+def repo_analyze(path, depth=1, exclude=None, use_cache=False, as_json=False):
+    from rich.console import Console
+    from rich.table import Table
+    from hpd_cli.ai.context import build_filesystem_context
+
+    ctx = build_filesystem_context(path, depth=depth, exclude=exclude, use_cache=use_cache)
+    if as_json:
+        print(json.dumps({
+            "base_path": ctx["base_path"],
+            "depth": ctx["depth"],
+            "exclude": ctx["exclude"],
+            "cache_hit": ctx["cache_hit"],
+            "data_repos": ctx["data_repos"],
+        }, indent=2, ensure_ascii=False))
+        return
+
+    console = Console()
+    cache_note = " cache" if ctx.get("cache_hit") else ""
+    table = Table(title=f"Repos de analisis de datos detectados (depth={ctx['depth']}{cache_note})", header_style="bold green")
+    table.add_column("Nombre", style="magenta")
+    table.add_column("Score", justify="right")
+    table.add_column("Keywords")
+    table.add_column("Path")
+
+    for repo in ctx["data_repos"]:
+        table.add_row(
+            repo["name"],
+            str(repo["data_score"]),
+            ", ".join(repo["matched_keywords"]) or "-",
+            repo["path"],
+        )
+
+    console.print(table)
+    if not ctx["data_repos"]:
+        console.print("[yellow]No se detectaron repos de datos con score suficiente.[/yellow]")
+
+def ask_ai(
+    question,
+    config,
+    provider="gemini_flash",
+    context_level="none",
+    fs_path=".",
+    fs_depth=1,
+    fs_exclude=None,
+    fs_cache=False,
+    task_type="default",
+):
+    logger.info(f"Analizando tu pregunta con HPD AI (Proveedor: {provider}, Contexto: {context_level})...")
     try:
-        from hpd_cli.ai_router import AIRouter
+        from hpd_cli.ai.context import build_context
+        from hpd_cli.ai.providers import ask_provider
         from rich.markdown import Markdown
         from rich.console import Console
 
-        router = AIRouter()
-        
-        # Inyectar un poco de contexto
-        context = f"Eres el asistente HPD-CLI. El usuario trabaja en un proyecto llamado '{config.get('project_name')}'. Responde de forma concisa y profesional."
-        
-        response_text = router.generate_content(question, context=context, task_type=task_type)
-        
+        # Build Context
+        context = build_context(
+            context_level,
+            fs_path=fs_path,
+            fs_depth=fs_depth,
+            fs_exclude=fs_exclude,
+            fs_cache=fs_cache,
+        )
+
+        # Call AI
+        response_text = ask_provider(provider, question, context=context)
+
         console = Console()
+        console.print("\n" + "─" * 40)
         console.print(Markdown(response_text))
+        console.print("─" * 40 + "\n")
     except Exception as e:
-        logger.error(f"Error en AI Router: {e}")
+        logger.error(f"Error en AI Engine: {e}")
 
 def show_status():
     from hpd_cli.ai_router import AIRouter
     from rich.console import Console
     from rich.table import Table
-    
+
     router = AIRouter()
     status = router.get_status()
     metrics = router.get_metrics()
-    
+
     console = Console()
     table = Table(title="HPD AI Router Status & Metrics", header_style="bold cyan")
     table.add_column("Proveedor", style="magenta")
@@ -76,21 +234,21 @@ def show_status():
     table.add_column("Requests", justify="right")
     table.add_column("Success %", justify="right")
     table.add_column("Avg Latency (ms)", justify="right")
-    
+
     for name, st in status.items():
         color = "green" if st == "AVAILABLE" else "red"
         m = metrics.get(name, {"requests": 0, "success_rate": 0, "avg_latency": 0}) if metrics else {"requests": 0, "success_rate": 0, "avg_latency": 0}
-        
+
         table.add_row(
-            name.capitalize(), 
+            name.capitalize(),
             f"[{color}]{st}[/{color}]",
             str(m["requests"]),
             f"{m['success_rate']}%",
             f"{m['avg_latency']}ms"
         )
-        
+
     console.print(table)
-    
+
     if not metrics:
         console.print("[dim]No se detectaron métricas de uso aún.[/dim]")
     else:
@@ -101,13 +259,13 @@ def show_recent_errors(console):
     from hpd_cli.ai_router import AIRouter
     import json
     import os
-    
+
     router = AIRouter()
     log_file = router.tracker.log_file
-    
+
     if not os.path.exists(log_file):
         return
-        
+
     errors = []
     with open(log_file, "r") as f:
         lines = f.readlines()
@@ -117,7 +275,7 @@ def show_recent_errors(console):
                 errors.append(data)
             if len(errors) >= 3:
                 break
-                
+
     if errors:
         console.print("\n[bold red]⚠️ Últimos Errores Detectados:[/bold red]")
         for err in errors:
@@ -128,12 +286,12 @@ def compare_providers(question, config):
     from rich.console import Console
     from rich.panel import Panel
     from rich.columns import Columns
-    
+
     router = AIRouter()
     console = Console()
-    
+
     console.print(f"\n[bold yellow]Comparando respuestas para:[/bold yellow] {question}\n")
-    
+
     panels = []
     for name in ["gemini", "openai", "anthropic"]:
         try:
@@ -145,47 +303,167 @@ def compare_providers(question, config):
                 panels.append(Panel("[red]Proveedor no disponible[/red]", title=name.capitalize(), width=60))
         except Exception as e:
             panels.append(Panel(f"[red]Error: {e}[/red]", title=name.capitalize(), width=60))
-            
+
     console.print(Columns(panels))
 
 def run_doctor():
     from hpd_cli.ai_router import AIRouter
     from rich.console import Console
+    from rich.table import Table
     import os
-    
+    import time
+
     console = Console()
-    console.print("\n[bold cyan]🩺 HPD AI Doctor - Diagnóstico[/bold cyan]\n")
-    
-    keys = {
-        "GEMINI_API_KEY": "Google Gemini",
-        "OPENAI_API_KEY": "OpenAI",
-        "ANTHROPIC_API_KEY": "Anthropic"
-    }
-    
-    for key, name in keys.items():
+    console.print("\n[bold cyan]🩺 HPD AI Doctor - Diagnóstico Avanzado[/bold cyan]\n")
+
+    router = AIRouter()
+
+    # 1. Credenciales y Permisos
+    table_keys = Table(title="1. Credenciales & Seguridad", header_style="bold magenta")
+    table_keys.add_column("Variable", style="dim")
+    table_keys.add_column("Estado")
+    table_keys.add_column("Permisos (600)")
+
+    keys = ["GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CLOUDFLARE_API_TOKEN"]
+    env_file = os.path.expanduser("~/.hpd/.env")
+    perms_ok = False
+    if os.path.exists(env_file):
+        mode = oct(os.stat(env_file).st_mode)[-3:]
+        perms_ok = (mode == "600")
+
+    for key in keys:
         val = os.getenv(key)
-        status = "[green]✓ CONFIGURADA[/green]" if val else "[red]✗ NO DETECTADA[/red]"
-        console.print(f"* {name}: {status}")
-        
-    console.print("\n[dim]Asegúrate de definir estas variables en tu entorno para habilitar todos los proveedores.[/dim]\n")
+        status = "[green]✓ OK[/green]" if val else "[yellow]⚠ MISSING[/yellow]"
+        table_keys.add_row(key, status, "[green]✓ OK[/green]" if perms_ok else "[red]✗ FAIL[/red]")
+
+    console.print(table_keys)
+
+    # 2. Conectividad y Latencia
+    table_conn = Table(title="2. Proveedores & Latencia", header_style="bold green")
+    table_conn.add_column("Proveedor")
+    table_conn.add_column("Estado")
+    table_conn.add_column("Latencia")
+
+    for name, provider in router.providers.items():
+        start = time.time()
+        is_up = provider.health_check()
+        latency = f"{(time.time() - start)*1000:.0f}ms" if is_up else "N/A"
+        status = "[green]ONLINE[/green]" if is_up else "[red]OFFLINE[/red]"
+        table_conn.add_row(name.capitalize(), status, latency)
+
+    console.print(table_conn)
+
+    # 3. Fallback Chain
+    console.print("\n[bold yellow]3. Fallback Chain (Default):[/bold yellow]")
+    chain = router.policy_engine.get_providers("default")
+    console.print(f" -> {' -> '.join(chain)}")
+
+    console.print("\n[dim]Sugerencia: Usa 'hpd ai ask \"hola\" --provider ollama' para probar localmente.[/dim]\n")
 
 def generate_module(name, config):
     logger.info(f"HPD AI Engine: Generando modulo '{name}'...")
     module_dir = os.path.join(config["directories"]["modules"], name)
-    
+
     if os.path.exists(module_dir):
         logger.warning(f"El modulo '{name}' ya existe.")
         return
-        
+
     os.makedirs(module_dir)
-    
+
     with open(os.path.join(module_dir, "__init__.py"), 'w') as f:
         f.write(f'"""Modulo {name}"""\n')
-        
+
     with open(os.path.join(module_dir, "models.py"), 'w') as f:
         f.write(f'# Modelos para {name}\n')
-        
+
     with open(os.path.join(module_dir, "services.py"), 'w') as f:
         f.write(f'# Servicios para {name}\n')
 
     logger.success(f"Modulo '{name}' generado exitosamente en {module_dir}/")
+
+def patch_file(filename, instruction_list, config):
+    import difflib
+    import shutil
+    from hpd_cli.ai.providers import ask_provider
+    from rich.console import Console
+    from rich.syntax import Syntax
+
+    instruction = " ".join(instruction_list)
+    console = Console()
+
+    if not os.path.exists(filename):
+        logger.error(f"El archivo {filename} no existe.")
+        return
+
+    # Security: Denylist check
+    denylist = [".env", "secrets", "key", "cert", "password", "token"]
+    if any(bad in filename.lower() for bad in denylist):
+        logger.error(f"SEGURIDAD: No se permite parchar archivos sensibles ({filename})")
+        return
+
+    try:
+        with open(filename, "r") as f:
+            original_content = f.read()
+    except Exception as e:
+        logger.error(f"No se pudo leer el archivo: {e}")
+        return
+
+    logger.info(f"Generando parche para {filename}...")
+
+    prompt = f"""
+Actúa como un asistente de edición de código experto.
+Recibirás el contenido de un archivo y una instrucción.
+Debes devolver el contenido COMPLETO del archivo modificado.
+No incluyas explicaciones, solo el código.
+
+ARCHIVO: {filename}
+CONTENIDO ACTUAL:
+{original_content}
+
+INSTRUCCIÓN: {instruction}
+"""
+
+    # We use a reliable provider for patching
+    new_content = ask_provider("gemini_flash", prompt, context="System: Eres un editor de archivos. Devuelve solo el contenido del archivo.")
+
+    # Clean up markdown if the AI wrapped it in code blocks
+    new_content = new_content.strip()
+    if new_content.startswith("```"):
+        lines = new_content.splitlines()
+        # Remove first line if it's ```language
+        if lines[0].startswith("```"): lines = lines[1:]
+        # Remove last line if it's ```
+        if lines and lines[-1].strip() == "```": lines = lines[:-1]
+        new_content = "\n".join(lines)
+
+    # Show Diff
+    diff = difflib.unified_diff(
+        original_content.splitlines(keepends=True),
+        new_content.splitlines(keepends=True),
+        fromfile=f"a/{filename}",
+        tofile=f"b/{filename}"
+    )
+
+    diff_text = "".join(diff)
+    if not diff_text:
+        console.print("\n[yellow]No se detectaron cambios necesarios o el AI devolvió el mismo contenido.[/yellow]")
+        return
+
+    console.print("\n[bold yellow]Parche propuesto:[/bold yellow]")
+    console.print(Syntax(diff_text, "diff", theme="monokai"))
+
+    try:
+        confirm = console.input("\n¿Deseas aplicar estos cambios? [y/N]: ")
+    except EOFError:
+        confirm = "n"
+
+    if confirm.lower() == 'y':
+        # Backup
+        shutil.copy2(filename, f"{filename}.bak")
+
+        with open(filename, "w") as f:
+            f.write(new_content)
+
+        logger.success(f"Cambios aplicados exitosamente. Respaldo creado en {filename}.bak")
+    else:
+        logger.info("Operación cancelada por el usuario.")
