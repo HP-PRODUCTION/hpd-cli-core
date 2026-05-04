@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -9,6 +10,26 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+
+def get_workspace_root() -> Path:
+    configured = os.getenv("HPD_WORKSPACE_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+
+    home_root = Path("/home/hpd")
+    if home_root.exists():
+        return home_root
+
+    opt_root = Path("/opt/hpd")
+    if opt_root.exists():
+        return opt_root
+
+    return home_root
+
+
+def workspace_path(project_name: str) -> str:
+    return str(get_workspace_root() / project_name)
 
 
 class CheckStatus(str, Enum):
@@ -29,52 +50,52 @@ class CheckResult:
 
 PROJECTS: dict[str, dict[str, Any]] = {
     "hpd-cli-core": {
-        "path": "/home/hpd/hpd-cli-core",
+        "path": workspace_path("hpd-cli-core"),
         "kind": "python-cli",
         "prod_files": ["pyproject.toml", ".github/workflows/tests.yml"],
         "ports": [],
     },
     "hpd-lab": {
-        "path": "/home/hpd/hpd-lab",
+        "path": workspace_path("hpd-lab"),
         "kind": "python-lab",
         "prod_files": ["pyproject.toml", "README.md"],
         "ports": [],
     },
     "proyecto_anaconda": {
-        "path": "/home/hpd/proyecto_anaconda",
+        "path": workspace_path("proyecto_anaconda"),
         "kind": "docker-fastapi-airflow",
         "prod_files": ["docker-compose.prod.yml", "alembic.ini", "Makefile"],
         "compose_files": ["docker-compose.yml", "docker-compose.prod.yml"],
         "ports": [5433, 8081, 3000, 8000],
     },
     "dropshipping-ebay": {
-        "path": "/home/hpd/dropshipping-ebay",
+        "path": workspace_path("dropshipping-ebay"),
         "kind": "docker-fastapi",
         "prod_files": ["docker-compose.prod.yml", "alembic.ini"],
         "compose_files": ["docker-compose.yml", "docker-compose.prod.yml"],
         "ports": [8010],
     },
     "wordpress-docker": {
-        "path": "/home/hpd/wordpress-docker",
+        "path": workspace_path("wordpress-docker"),
         "kind": "docker-wordpress",
         "prod_files": ["docker-compose.yml"],
         "compose_files": ["docker-compose.yml"],
         "ports": [9001, 6379],
     },
     "Plataforma_deportiva": {
-        "path": "/home/hpd/Plataforma_deportiva",
+        "path": workspace_path("Plataforma_deportiva"),
         "kind": "fastapi-render",
         "prod_files": ["render.yaml", "requirements.txt"],
         "ports": [],
     },
     "palabra-viva-factory": {
-        "path": "/home/hpd/palabra-viva-factory",
+        "path": workspace_path("palabra-viva-factory"),
         "kind": "python-video-factory",
         "prod_files": ["requirements.txt"],
         "ports": [],
     },
     "inversiones": {
-        "path": "/home/hpd/inversiones",
+        "path": workspace_path("inversiones"),
         "kind": "python-node-trading",
         "prod_files": ["Makefile", "requirements.txt"],
         "ports": [],

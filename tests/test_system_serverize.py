@@ -9,6 +9,13 @@ def test_select_projects_single_project():
     assert list(selected.keys()) == ["hpd-cli-core"]
 
 
+def test_workspace_path_uses_env_root(monkeypatch):
+    monkeypatch.setenv("HPD_WORKSPACE_ROOT", "/tmp/hpd-root")
+
+    assert serverize.get_workspace_root() == Path("/tmp/hpd-root")
+    assert serverize.workspace_path("wordpress-docker") == "/tmp/hpd-root/wordpress-docker"
+
+
 def test_select_projects_all():
     selected = serverize.select_projects("all")
 

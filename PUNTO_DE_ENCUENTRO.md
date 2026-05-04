@@ -1,6 +1,6 @@
 # 📍 Punto de Encuentro: HPD CLI Core
 
-**Fecha**: 2026-04-27
+**Fecha**: 2026-05-04
 **Contexto**: Cierre de los sprints de Hardening y CI. El sistema ha pasado de ser un MVP funcional a una plataforma gobernada y segura.
 
 ---
@@ -14,10 +14,20 @@
 - **Dependencias**: Formalizadas en `pyproject.toml` (incluyendo `psutil`, `google-generativeai` y `dev` extras).
 
 ### 2. Testing & Calidad (EPIC-CI-01)
-- **Suite de Pruebas**: 31 tests operativos (`pytest`).
+- **Suite de Pruebas**: 47 tests operativos (`pytest`).
   - Cobertura: System Doctor (scoring/hints), AI Router (fallback/health), System Clean (dry-run safety).
 - **Portero (CI)**: GitHub Actions configurado en `.github/workflows/tests.yml`. Ejecución automática en cada push/PR.
 - **Badge**: Visible en el `README.md`.
+
+### 2.1 AI Local-Aware (EPIC-AI-FS-01)
+- **Comandos implementados**:
+  - `hpd ai ls`
+  - `hpd ai repo scan --path <path> --depth <n> --exclude <terms> --json`
+  - `hpd ai repo analyze --path <path> --depth <n> --cache --json`
+  - `hpd ai ask --context fs --path <path> --depth <n> "..."`
+- **Cache local**: `~/.hpd/cache`.
+- **Fixtures**: `hpd-lab/fixtures/repos/` valida scoring sin depender del filesystem real.
+- **Ajuste 2026-05-04**: el scoring evita falsos positivos de keywords cortas como `bi` dentro de palabras comunes.
 
 ### 3. WordPress Editorial & Económico (EPIC-WP-ECO-02)
 - **Categorías Dinámicas**: Implementada resolución automática de categorías WP en el plugin `hpd-auto-publicador` (v2.14.0).
@@ -31,6 +41,7 @@
 - **Entorno Limpio**: Estructura R&D operativa.
 - **Archivo**: Material legacy movido a `archive/legacy/`.
 - **Config**: `LAB_DIR` ahora es dinámico.
+- **Validación actual**: 2 tests verdes en `hpd-lab`.
 
 ---
 
@@ -55,8 +66,8 @@
 
 ## 📝 Notas para la siguiente sesión
 - **Instalación**: Para desarrollo, usar `pip install -e ".[dev]"`.
-- **Tests**: Antes de cualquier cambio, correr `pytest`.
+- **Tests**: Antes de cualquier cambio, correr `python3 -m pytest -q`.
 - **Seguridad**: La Denylist está en `hpd_cli/ai/context.py` y `hpd_cli/commands/ai.py`.
 
 > [!IMPORTANT]
-> El sistema está en estado **VERDE** (31/31 tests passing). No se permiten cambios que rompan la suite de pruebas.
+> El sistema está en estado **VERDE** (47/47 tests passing). No se permiten cambios que rompan la suite de pruebas.

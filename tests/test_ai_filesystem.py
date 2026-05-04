@@ -45,6 +45,30 @@ def test_score_data_repo_marks_likely_data_repo(tmp_path):
     assert "pandas" in analyzed["matched_keywords"]
 
 
+def test_score_data_repo_does_not_match_bi_inside_words(tmp_path):
+    repo_path = tmp_path / "web_app"
+    repo_path.mkdir()
+    (repo_path / "README.md").write_text(
+        "Aplicacion con disponibilidad publica y habilidades generales.",
+        encoding="utf-8",
+    )
+
+    repo = {
+        "name": repo_path.name,
+        "path": str(repo_path),
+        "has_git": False,
+        "has_requirements": False,
+        "has_pyproject": False,
+        "has_docker": False,
+        "has_hpd_config": False,
+    }
+
+    analyzed = score_data_repo(repo)
+
+    assert "bi" not in analyzed["matched_keywords"]
+    assert analyzed["likely_data_repo"] is False
+
+
 def test_build_filesystem_context_groups_data_repos(tmp_path):
     data_repo = tmp_path / "analytics_stack"
     data_repo.mkdir()

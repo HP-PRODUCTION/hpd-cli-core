@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -33,7 +34,7 @@ def score_data_repo(repo):
     matched = []
 
     for keyword in DATA_KEYWORDS:
-        if keyword in name:
+        if keyword_matches(name, keyword):
             score += 2
             matched.append(keyword)
 
@@ -50,7 +51,7 @@ def score_data_repo(repo):
             continue
 
         for keyword in DATA_KEYWORDS:
-            if keyword in content:
+            if keyword_matches(content, keyword):
                 score += 1
                 matched.append(keyword)
 
@@ -60,3 +61,15 @@ def score_data_repo(repo):
         "matched_keywords": sorted(set(matched)),
         "likely_data_repo": score >= 3,
     }
+
+
+def keyword_matches(text, keyword):
+    """Match keywords as technical terms, not arbitrary substrings."""
+    text = str(text).lower()
+    keyword = str(keyword).lower()
+
+    if len(keyword) <= 2:
+        pattern = r"(?<![a-z0-9])" + re.escape(keyword) + r"(?![a-z0-9])"
+        return re.search(pattern, text) is not None
+
+    return keyword in text

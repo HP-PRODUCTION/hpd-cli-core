@@ -62,7 +62,24 @@ Antes de promover cualquier cambio o después de un update:
 ```bash
 pytest /home/hpd/hpd-cli-core/tests
 ```
-**Regla**: Todos los tests (28+) deben estar en verde. Si un test falla, el Control Plane se considera en estado "Inestable".
+**Regla**: Todos los tests (47+) deben estar en verde. Si un test falla, el Control Plane se considera en estado "Inestable".
+
+## 🗺️ Inventario Local-Aware Del Workspace
+
+Para revisar el workspace HPD completo antes de tocar un proyecto:
+
+```bash
+hpd ai repo scan --path /home/hpd --depth 1 --exclude respaldo,node_modules,venv,.cache --json
+hpd ai repo analyze --path /home/hpd --depth 2 --exclude respaldo,node_modules,venv,.cache --json
+```
+
+Lectura esperada:
+- `proyecto_anaconda`: plataforma data/ETL principal.
+- `wordpress-docker`: plataforma editorial con observabilidad y datos operativos.
+- `dropshipping-ebay`: dominio comercial con señales data/ETL.
+- `hpd-lab`: laboratorio/fixtures para validar heurísticas.
+
+Si un repo aparece como data repo por una keyword débil, agregar fixture y test antes de ajustar scoring.
 
 ---
 
