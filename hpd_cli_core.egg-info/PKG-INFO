@@ -10,7 +10,25 @@ Requires-Dist: PyYAML>=6.0
 Requires-Dist: SQLAlchemy>=1.4.0
 Requires-Dist: python-dotenv>=0.19.0
 Requires-Dist: requests>=2.26.0
+Requires-Dist: psutil>=5.9.0
+Requires-Dist: google-generativeai>=0.8.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.0.0; extra == "dev"
 
-# HPD CLI Core
+# HPD Platform Engine CLI (Control Plane)
 
-Control Plane for HPD infrastructure.
+CLI centralizada para la gestión de infraestructura y aplicaciones HPD.
+
+## Namespaces Disponibles:
+- `anaconda`: Gestión de Proyecto Anaconda (ETL).
+- `dropshipping`: Gestión de Dropshipping eBay.
+- **`wordpress`**: Gestión de ecosistema WordPress (HPD El Matutino).
+- `etl`: Herramientas de observabilidad y pipelines.
+- `ai`: Router de IA y scaffolding.
+
+## Uso rápido (WordPress):
+```bash
+hpd wordpress doctor
+hpd wordpress doctor --json --history
+```
