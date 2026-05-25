@@ -1,4 +1,5 @@
 import subprocess
+import shutil
 from hpd_cli.config import ensure_config
 from hpd_cli import logger
 
@@ -7,6 +8,11 @@ def setup_parser(subparsers):
     services_subparsers = parser.add_subparsers(dest="services_command", help="Subcomandos de Servicios")
     services_subparsers.required = True
     
+    services_subparsers.add_parser("up", help="Levantar servicios con Docker Compose")
+    services_subparsers.add_parser("stop", help="Detener servicios con Docker Compose")
+    logs_parser = services_subparsers.add_parser("logs", help="Ver logs de servicios con Docker Compose")
+    logs_parser.add_argument("service", nargs="?", help="Servicio especifico")
+    logs_parser.add_argument("-f", "--follow", action="store_true", help="Seguir logs en tiempo real")
     services_subparsers.add_parser("status", help="Ver estado de los servicios (Docker PS)")
     services_subparsers.add_parser("health", help="Prueba de salud profunda de los servicios")
     
@@ -15,11 +21,42 @@ def setup_parser(subparsers):
 def execute(args):
     ensure_config()
     
-    if args.services_command == "status":
+    if args.services_command == "up":
+        run_compose(["up", "-d"])
+    elif args.services_command == "stop":
+        run_compose(["stop"])
+    elif args.services_command == "logs":
+        command = ["logs"]
+        if getattr(args, "follow", False):
+            command.append("-f")
+        if getattr(args, "service", None):
+            command.append(args.service)
+        run_compose(command)
+    elif args.services_command == "status":
         logger.info("HPD Services: Estado actual del entorno...")
-        subprocess.run(["docker-compose", "ps"])
+        run_compose(["ps"])
     elif args.services_command == "health":
         perform_deep_health_check()
+
+def compose_command():
+    if shutil.which("docker"):
+        result = subprocess.run(["docker", "compose", "version"], capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            return ["docker", "compose"]
+    if shutil.which("docker-compose"):
+        return ["docker-compose"]
+    return None
+
+def run_compose(args):
+    command = compose_command()
+    if not command:
+        logger.error("No se encontro Docker Compose. Instala 'docker compose' o 'docker-compose'.")
+        return
+
+    logger.info(f"Ejecutando: {' '.join(command + args)}")
+    result = subprocess.run(command + args, check=False)
+    if result.returncode != 0:
+        logger.error(f"Docker Compose termino con codigo {result.returncode}")
 
 def perform_deep_health_check():
     from rich.console import Console
@@ -27,6 +64,7 @@ def perform_deep_health_check():
     from rich.progress import Progress, SpinnerColumn, TextColumn
     import psycopg2
     import requests
+    import json
     import os
     import time
     import shutil

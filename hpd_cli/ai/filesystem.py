@@ -7,8 +7,11 @@ PROJECT_MARKERS = (
     "requirements.txt",
     "package.json",
     "hpd.config.json",
+    ".env.example",
     "docker-compose.yml",
     "compose.yml",
+    "Dockerfile",
+    "wp-config.php",
 )
 
 DEFAULT_EXCLUDES = (
@@ -22,6 +25,9 @@ DEFAULT_EXCLUDES = (
     "env",
     "respaldo",
     "backup",
+    "Downloads",
+    "miniconda3",
+    ".local",
 )
 
 
@@ -39,7 +45,9 @@ def is_excluded(path, exclude_terms):
 
 
 def has_project_marker(path):
-    return any((path / marker).exists() for marker in PROJECT_MARKERS)
+    if any((path / marker).exists() for marker in PROJECT_MARKERS):
+        return True
+    return any((path / marker).exists() for marker in ("dags", "notebooks", "migrations"))
 
 
 def project_info(path):
@@ -50,23 +58,35 @@ def project_info(path):
         "has_git": markers[".git"],
         "has_requirements": markers["requirements.txt"],
         "has_pyproject": markers["pyproject.toml"],
-        "has_docker": markers["docker-compose.yml"] or markers["compose.yml"],
+        "has_docker": markers["docker-compose.yml"] or markers["compose.yml"] or markers["Dockerfile"],
         "has_hpd_config": markers["hpd.config.json"],
+        "has_package_json": markers["package.json"],
+        "has_env_example": markers[".env.example"],
+        "has_wordpress": markers["wp-config.php"] or (path / "wp-content").exists(),
+        "has_airflow": (path / "dags").exists() or any(path.glob("*_dag.py")),
+        "has_sql": any(path.glob("*.sql")),
+        "has_notebooks": any(path.glob("*.ipynb")) or (path / "notebooks").exists(),
     }
 
 
-def scan_repos(base_path=".", depth=1, exclude=None):
+def scan_repos(base_path=".", depth=1, exclude=None, max_dirs=5000):
     """Scan local project folders up to a bounded depth."""
     base = Path(base_path).expanduser().resolve()
     repos = []
     seen = set()
     exclude_terms = normalize_excludes(exclude)
     max_depth = max(0, int(depth))
+    visited = 0
 
     if not base.exists() or not base.is_dir():
         return repos
 
     def walk(current, current_depth):
+        nonlocal visited
+        visited += 1
+        if visited > max_dirs:
+            return
+
         if current_depth > max_depth:
             return
 
@@ -91,9 +111,11 @@ def scan_repos(base_path=".", depth=1, exclude=None):
             if child.is_dir():
                 walk(child, current_depth + 1)
 
-    if max_depth == 0 and has_project_marker(base):
+    if has_project_marker(base):
         repos.append(project_info(base))
-    else:
+        seen.add(str(base))
+
+    if max_depth > 0:
         walk(base, 0)
 
     return repos

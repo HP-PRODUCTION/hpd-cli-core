@@ -312,9 +312,14 @@ def run_doctor():
     from rich.table import Table
     import os
     import time
+    from dotenv import load_dotenv
 
     console = Console()
     console.print("\n[bold cyan]🩺 HPD AI Doctor - Diagnóstico Avanzado[/bold cyan]\n")
+
+    env_file = os.path.expanduser("~/.hpd/.env")
+    if os.path.exists(env_file):
+        load_dotenv(env_file)
 
     router = AIRouter()
 
@@ -324,8 +329,14 @@ def run_doctor():
     table_keys.add_column("Estado")
     table_keys.add_column("Permisos (600)")
 
-    keys = ["GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CLOUDFLARE_API_TOKEN"]
-    env_file = os.path.expanduser("~/.hpd/.env")
+    keys = [
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "CLOUDFLARE_API_TOKEN",
+        "DEEPSEEK_API_KEY",
+    ]
     perms_ok = False
     if os.path.exists(env_file):
         mode = oct(os.stat(env_file).st_mode)[-3:]
@@ -343,13 +354,14 @@ def run_doctor():
     table_conn.add_column("Proveedor")
     table_conn.add_column("Estado")
     table_conn.add_column("Latencia")
+    table_conn.add_column("Detalle")
 
     for name, provider in router.providers.items():
         start = time.time()
-        is_up = provider.health_check()
+        is_up, detail = health_check_provider(provider)
         latency = f"{(time.time() - start)*1000:.0f}ms" if is_up else "N/A"
         status = "[green]ONLINE[/green]" if is_up else "[red]OFFLINE[/red]"
-        table_conn.add_row(name.capitalize(), status, latency)
+        table_conn.add_row(name.capitalize(), status, latency, detail)
 
     console.print(table_conn)
 
@@ -359,6 +371,27 @@ def run_doctor():
     console.print(f" -> {' -> '.join(chain)}")
 
     console.print("\n[dim]Sugerencia: Usa 'hpd ai ask \"hola\" --provider ollama' para probar localmente.[/dim]\n")
+
+def health_check_provider(provider):
+    if not provider.health_check():
+        return False, "Sin credenciales o servicio local no disponible"
+
+    try:
+        response = provider.generate("Respond with exactly: OK", context="")
+        if response and "OK" in response.upper():
+            return True, "Respuesta OK"
+        if response:
+            return True, "Conectado; respuesta inesperada"
+        return False, "Respuesta vacia"
+    except Exception as exc:
+        detail = str(exc)
+        if "401" in detail and "Unauthorized" in detail:
+            return False, "Credencial invalida o sin permisos para este proveedor"
+        if "402" in detail and "Payment Required" in detail:
+            return False, "Cuenta sin saldo/facturacion para este proveedor"
+        if "404" in detail and "api/generate" in detail:
+            return False, "Servicio local responde, pero el modelo/configuracion no existe"
+        return False, detail[:80]
 
 def generate_module(name, config):
     logger.info(f"HPD AI Engine: Generando modulo '{name}'...")

@@ -1,5 +1,6 @@
 import argparse
 import sys
+from hpd_cli import logger
 
 from hpd_cli.commands import (
     init,
@@ -18,6 +19,8 @@ from hpd_cli.commands import (
     wordpress,
     plataforma,
     inversiones,
+    setup,
+    secure,
 )
 import os
 import importlib.util
@@ -45,6 +48,8 @@ def load_plugins(subparsers):
 
 def main():
     parser = argparse.ArgumentParser(description="HPD Platform Engine CLI", prog="hpd")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Mostrar logs de depuracion")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Mostrar solo errores")
 
     subparsers = parser.add_subparsers(dest="command", help="Comandos disponibles")
     subparsers.required = True
@@ -66,6 +71,8 @@ def main():
     wordpress.setup_parser(subparsers)
     plataforma.setup_parser(subparsers)
     inversiones.setup_parser(subparsers)
+    setup.setup_parser(subparsers)
+    secure.setup_parser(subparsers)
 
     # Load Plugins dynamically
     load_plugins(subparsers)
@@ -89,6 +96,7 @@ def main():
         sys.exit(1)
 
     args = parser.parse_args()
+    logger.configure(quiet=args.quiet, verbose=args.verbose)
 
     # Dispatch execution
     if hasattr(args, "func"):

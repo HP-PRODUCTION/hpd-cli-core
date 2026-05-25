@@ -11,7 +11,7 @@
 - **Error Handling**: Eliminados todos los `bare except:`. Captura de excepciones tipadas en todo el core.
 - **AI Safety**: Implementada **Denylist de Seguridad** en `build_context` y `ai patch`. Protege archivos `.env`, `secrets`, `keys`, etc.
 - **Arquitectura**: `AIRouter` convertido a **Singleton** (`get_ai_router()`) para optimización de recursos.
-- **Dependencias**: Formalizadas en `pyproject.toml` (incluyendo `psutil`, `google-generativeai` y `dev` extras).
+- **Dependencias**: Formalizadas en `pyproject.toml` (incluyendo `psutil`, `google-genai` y `dev` extras).
 
 ### 2. Testing & Calidad (EPIC-CI-01)
 - **Suite de Pruebas**: 47 tests operativos (`pytest`).

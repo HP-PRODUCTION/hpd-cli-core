@@ -4,7 +4,9 @@ import glob
 import time
 import subprocess
 import platform
+import shutil
 import psutil
+from pathlib import Path
 from datetime import datetime
 from hpd_cli import logger
 from hpd_cli.commands.serverize import register_serverize_parser
@@ -33,6 +35,11 @@ def setup_parser(subparsers):
     clean_parser.add_argument("--dry-run", action="store_true", help="Simular limpieza sin borrar nada")
     clean_parser.add_argument("--apply", action="store_true", help="Ejecutar limpieza real")
 
+    fix_parser = system_subparsers.add_parser("fix", help="Reparaciones guiadas no destructivas")
+    fix_parser.add_argument("target", choices=["docker", "env-perms", "ollama-model", "swap"], help="Objetivo a corregir")
+    fix_parser.add_argument("--apply", action="store_true", help="Ejecutar la reparacion; por defecto solo muestra comandos")
+    fix_parser.add_argument("--model", default=os.getenv("OLLAMA_MODEL", "llama3.1:8b"), help="Modelo Ollama para ollama-model")
+
     register_serverize_parser(system_subparsers)
 
     parser.set_defaults(func=execute)
@@ -56,6 +63,8 @@ def execute(args):
         generate_report()
     elif args.system_command == "clean":
         run_clean(dry_run=args.dry_run, apply=args.apply)
+    elif args.system_command == "fix":
+        run_fix(args.target, apply=args.apply, model=getattr(args, "model", "llama3.1:8b"))
 
 def run_doctor(json_format=False, verbose=False, history=False):
     metrics = collect_metrics(verbose=verbose)
@@ -82,7 +91,7 @@ def run_doctor(json_format=False, verbose=False, history=False):
     # Summary Table
     table = Table(show_header=False, box=None)
     table.add_row("[bold]Host[/bold]", f"{platform.node()} ({platform.system()} {platform.release()})")
-    table.add_row("[bold]Uptime[/bold]", subprocess.check_output(["uptime", "-p"], text=True).strip())
+    table.add_row("[bold]Uptime[/bold]", get_uptime())
     table.add_row("[bold]Score[/bold]", f"{score}/100")
     console.print(table)
 
@@ -121,7 +130,7 @@ def collect_metrics(verbose=False):
         "host": {
             "name": platform.node(),
             "os": platform.platform(),
-            "uptime": subprocess.check_output(["uptime", "-p"], text=True).strip()
+            "uptime": get_uptime()
         },
         "cpu": {
             "usage_pct": cpu_usage,
@@ -136,7 +145,8 @@ def collect_metrics(verbose=False):
         "docker": {
             "running": False,
             "containers_total": 0,
-            "containers_running": 0
+            "containers_running": 0,
+            "error": None,
         }
     }
 
@@ -161,20 +171,75 @@ def collect_metrics(verbose=False):
 
     # Docker metrics
     try:
-        docker_info = subprocess.check_output(["docker", "info", "--format", "{{json .}}"], text=True, stderr=subprocess.DEVNULL)
-        info = json.loads(docker_info)
+        docker_result = subprocess.run(
+            ["docker", "info", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if docker_result.returncode != 0:
+            metrics["docker"]["error"] = (docker_result.stderr or docker_result.stdout).strip()
+            return metrics
+
+        info = json.loads(docker_result.stdout)
         server_errors = info.get("ServerErrors") or []
+        if server_errors:
+            metrics["docker"]["error"] = "; ".join(server_errors)
+            return metrics
+
         if not server_errors:
             metrics["docker"] = {
                 "running": True,
                 "containers_total": info.get("Containers", 0),
                 "containers_running": info.get("ContainersRunning", 0),
-                "images": info.get("Images", 0)
+                "images": info.get("Images", 0),
+                "error": None,
             }
-    except (FileNotFoundError, subprocess.CalledProcessError, json.JSONDecodeError):
-        pass
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        metrics["docker"]["error"] = str(exc)
 
     return metrics
+
+def get_uptime():
+    if shutil.which("uptime"):
+        try:
+            return subprocess.check_output(["uptime", "-p"], text=True).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+
+    boot_time = datetime.fromtimestamp(psutil.boot_time())
+    delta = datetime.now() - boot_time
+    days = delta.days
+    hours = delta.seconds // 3600
+    minutes = (delta.seconds % 3600) // 60
+    parts = []
+    if days:
+        parts.append(f"{days} days")
+    if hours:
+        parts.append(f"{hours} hours")
+    parts.append(f"{minutes} minutes")
+    return "up " + ", ".join(parts)
+
+def get_service_manager():
+    if shutil.which("systemctl") and Path("/run/systemd/system").exists():
+        return "systemd"
+    if shutil.which("service") and Path("/etc/init.d").exists():
+        return "sysvinit"
+    return "none"
+
+def service_status(service_name):
+    manager = get_service_manager()
+    if manager == "systemd":
+        result = subprocess.run(["systemctl", "is-active", service_name], capture_output=True, text=True, check=False)
+        return result.stdout.strip() or "inactive"
+    if manager == "sysvinit":
+        result = subprocess.run(["service", service_name, "status"], capture_output=True, text=True, check=False)
+        return "active" if result.returncode == 0 else "inactive"
+
+    if service_name == "docker" and shutil.which("docker"):
+        result = subprocess.run(["docker", "info"], capture_output=True, text=True, check=False)
+        return "active" if result.returncode == 0 else "inactive"
+    return "unknown"
 
 def calculate_score(metrics):
     score = 100
@@ -209,7 +274,12 @@ def calculate_score(metrics):
 
     # Docker check
     if not metrics["docker"]["running"]:
-        deductions.append({"section": "docker", "points": 20, "reason": "Docker daemon not running"})
+        docker_error = metrics["docker"].get("error")
+        if docker_error and "permission denied" in docker_error.lower():
+            reason = "Docker daemon inaccessible: permission denied"
+        else:
+            reason = "Docker daemon not running"
+        deductions.append({"section": "docker", "points": 20, "reason": reason})
 
     total_deduction = sum(d["points"] for d in deductions)
     score = max(0, 100 - total_deduction)
@@ -225,7 +295,15 @@ def generate_hints(metrics, deductions):
         hints.append("Usa 'hpd system clean --dry-run' para ver qué archivos puedes borrar.")
     if "docker" in sections:
         if not metrics["docker"]["running"]:
-            hints.append("Intenta reiniciar Docker: 'sudo systemctl restart docker'.")
+            manager = get_service_manager()
+            if manager == "systemd":
+                hints.append("Intenta reiniciar Docker: 'sudo systemctl restart docker'.")
+            elif manager == "sysvinit":
+                hints.append("Intenta reiniciar Docker: 'sudo service docker restart'.")
+            elif "permission denied" in str(metrics["docker"].get("error", "")).lower():
+                hints.append("Docker esta activo, pero el usuario/sandbox no puede acceder a /var/run/docker.sock.")
+            else:
+                hints.append("Verifica Docker con 'docker info' o inicia Docker Desktop/daemon.")
         elif metrics["docker"]["containers_total"] > metrics["docker"]["containers_running"]:
             hints.append("Tienes contenedores detenidos. Considera 'hpd system clean' para podarlos.")
 
@@ -276,11 +354,9 @@ def show_services():
     logger.info("🛠️ Servicios Críticos:")
     services = ["docker", "ssh", "apache2", "nginx", "mariadb", "postgresql", "redis"]
     for s in services:
-        try:
-            status = subprocess.check_output(["systemctl", "is-active", s], text=True, stderr=subprocess.DEVNULL).strip()
+        status = service_status(s)
+        if status != "unknown":
             print(f" - {s}: {status}")
-        except (FileNotFoundError, subprocess.CalledProcessError):
-            pass
 
 def run_clean(dry_run=True, apply=False):
     if not apply and not dry_run:
@@ -291,22 +367,60 @@ def run_clean(dry_run=True, apply=False):
     logger.info(f"🧹 Iniciando limpieza de sistema ({mode})...")
 
     tasks = [
-        ("Caché APT", "sudo apt-get clean"),
-        ("Paquetes huérfanos", "sudo apt-get autoremove -y"),
-        ("Logs antiguos (journald)", "sudo journalctl --vacuum-time=7d"),
-        ("Imágenes Docker huérfanas", "docker image prune -f"),
-        ("Contenedores Docker detenidos", "docker container prune -f")
+        ("Caché APT", ["apt-get", "clean"], shutil.which("apt-get") is not None),
+        ("Paquetes huerfanos", ["apt-get", "autoremove", "-y"], shutil.which("apt-get") is not None),
+        ("Logs antiguos (journald)", ["journalctl", "--vacuum-time=7d"], get_service_manager() == "systemd" and shutil.which("journalctl") is not None),
+        ("Contenedores Docker detenidos", ["docker", "container", "prune", "-f"], shutil.which("docker") is not None),
+        ("Imagenes Docker huerfanas", ["docker", "image", "prune", "-f"], shutil.which("docker") is not None),
+        ("Volumenes Docker huerfanos", ["docker", "volume", "prune", "-f"], shutil.which("docker") is not None),
+        ("Redes Docker huerfanas", ["docker", "network", "prune", "-f"], shutil.which("docker") is not None),
     ]
 
-    for desc, cmd in tasks:
+    for desc, cmd, enabled in tasks:
+        cmd_text = " ".join(cmd)
+        if not enabled:
+            print(f" [SKIP] No disponible en este sistema: {cmd_text} ({desc})")
+            continue
         if dry_run:
-            print(f" [SKIP] Se ejecutaría: {cmd} ({desc})")
+            print(f" [SKIP] Se ejecutaria: {cmd_text} ({desc})")
         else:
-            print(f" [RUN] Ejecutando: {cmd} ({desc})")
+            print(f" [RUN] Ejecutando: {cmd_text} ({desc})")
             try:
-                subprocess.run(cmd.split(), check=True, capture_output=True)
+                subprocess.run(cmd, check=False, capture_output=True)
             except Exception as e:
                 print(f"  Error: {e}")
+
+def run_fix(target, apply=False, model="llama3.1:8b"):
+    commands = []
+    if target == "docker":
+        manager = get_service_manager()
+        if manager == "systemd":
+            commands = [["sudo", "systemctl", "restart", "docker"], ["docker", "info"]]
+        elif manager == "sysvinit":
+            commands = [["sudo", "service", "docker", "restart"], ["docker", "info"]]
+        else:
+            logger.warning("No se detecto gestor de servicios. Verifica Docker Desktop/daemon manualmente.")
+            commands = [["docker", "info"]]
+    elif target == "env-perms":
+        commands = [["chmod", "600", os.path.expanduser("~/.hpd/.env")]]
+    elif target == "ollama-model":
+        commands = [["ollama", "pull", model], ["ollama", "list"]]
+    elif target == "swap":
+        commands = [["sudo", "swapoff", "-a"], ["sudo", "swapon", "-a"]]
+
+    if not apply:
+        logger.info("Dry-run. Usa --apply para ejecutar.")
+        for command in commands:
+            print(" ".join(command))
+        return
+
+    for command in commands:
+        logger.info(f"Ejecutando: {' '.join(command)}")
+        result = subprocess.run(command, check=False)
+        if result.returncode != 0:
+            logger.error(f"Comando fallo con codigo {result.returncode}: {' '.join(command)}")
+            return
+    logger.success(f"Fix aplicado: {target}")
 
 def generate_report():
     report_file = "hpd_system_report.txt"
