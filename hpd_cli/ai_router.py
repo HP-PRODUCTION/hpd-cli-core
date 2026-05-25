@@ -1,6 +1,18 @@
 import os
 import time
 from hpd_cli import logger
+from hpd_cli.config import load_config
+
+
+def load_dotenv_files():
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+
+    for env_file in (os.path.expanduser("~/.hpd/.env"), ".env"):
+        if os.path.exists(env_file):
+            load_dotenv(env_file)
 
 class BaseProvider:
     def __init__(self, model_name=None):
@@ -13,40 +25,93 @@ class BaseProvider:
         raise NotImplementedError
 
 class GeminiProvider(BaseProvider):
-    def generate(self, prompt, context=None):
-        import google.generativeai as genai
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("Falta GEMINI_API_KEY")
+    def api_key(self):
+        return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
-        genai.configure(api_key=api_key)
-        model_name = self.model_name or "gemini-1.5-flash"
-        model = genai.GenerativeModel(model_name)
+    def generate(self, prompt, context=None):
+        try:
+            from google import genai
+        except ImportError as exc:
+            raise ImportError("Instala google-genai para usar Gemini: pip install google-genai") from exc
+
+        api_key = self.api_key()
+        if not api_key:
+            raise ValueError("Falta GEMINI_API_KEY o GOOGLE_API_KEY")
+
+        client = genai.Client(api_key=api_key)
+        model_name = self.model_name or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
-        response = model.generate_content(full_prompt)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=full_prompt,
+        )
         return response.text
 
     def health_check(self):
-        return os.getenv("GEMINI_API_KEY") is not None
+        return self.api_key() is not None
 
 class OpenAIProvider(BaseProvider):
     def generate(self, prompt, context=None):
-        # Implementación simplificada para v1
-        return f"[AI Router - OpenAI Simulator] Simulando respuesta para: {prompt[:50]}..."
+        import requests
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Falta OPENAI_API_KEY")
+
+        base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        model_name = self.model_name or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        messages = []
+        if context:
+            messages.append({"role": "system", "content": context})
+        messages.append({"role": "user", "content": prompt})
+
+        response = requests.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"model": model_name, "messages": messages},
+            timeout=60,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload["choices"][0]["message"]["content"]
 
     def health_check(self):
-        # Siempre disponible en v1 como simulador
-        return True
+        return os.getenv("OPENAI_API_KEY") is not None
 
 class AnthropicProvider(BaseProvider):
     def generate(self, prompt, context=None):
-        # Implementación simplificada para v1
-        return f"[AI Router - Anthropic Simulator] Simulando respuesta para: {prompt[:50]}..."
+        import requests
+
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("Falta ANTHROPIC_API_KEY")
+
+        model_name = self.model_name or os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
+        full_prompt = f"{context}\n\n{prompt}" if context else prompt
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model_name,
+                "max_tokens": 256,
+                "messages": [{"role": "user", "content": full_prompt}],
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return "".join(block.get("text", "") for block in payload.get("content", []) if block.get("type") == "text")
 
     def health_check(self):
-        # Siempre disponible en v1 como simulador
-        return True
+        return os.getenv("ANTHROPIC_API_KEY") is not None
 
 class CloudflareProvider(BaseProvider):
     def generate(self, prompt, context=None):
@@ -70,6 +135,38 @@ class CloudflareProvider(BaseProvider):
 
     def health_check(self):
         return all([os.getenv("CLOUDFLARE_API_TOKEN"), os.getenv("CLOUDFLARE_ACCOUNT_ID")])
+
+class DeepSeekProvider(BaseProvider):
+    def generate(self, prompt, context=None):
+        import requests
+
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise ValueError("Falta DEEPSEEK_API_KEY")
+
+        base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+        model_name = self.model_name or os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+        full_prompt = f"{context}\n\n{prompt}" if context else prompt
+
+        response = requests.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model_name,
+                "messages": [{"role": "user", "content": full_prompt}],
+                "stream": False,
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload["choices"][0]["message"]["content"]
+
+    def health_check(self):
+        return os.getenv("DEEPSEEK_API_KEY") is not None
 
 class OllamaProvider(BaseProvider):
     def generate(self, prompt, context=None):
@@ -104,21 +201,22 @@ class OllamaProvider(BaseProvider):
             return False
 
 class PolicyEngine:
-    def __init__(self):
-        self.routing_rules = {
-            "code_generate": ["openai", "anthropic", "gemini", "ollama", "cloudflare"],
-            "architecture_review": ["anthropic", "openai", "gemini", "ollama"],
-            "fast_lookup": ["ollama", "cloudflare", "gemini", "openai"],
-            "default": ["gemini", "openai", "anthropic", "ollama", "cloudflare"]
+    def __init__(self, routing_rules=None, fallback_chain=None):
+        default_rules = {
+            "code_generate": ["openai", "anthropic", "gemini", "deepseek", "ollama", "cloudflare"],
+            "architecture_review": ["anthropic", "openai", "gemini", "deepseek", "ollama"],
+            "fast_lookup": ["ollama", "deepseek", "cloudflare", "gemini", "openai"],
+            "default": ["gemini", "deepseek", "openai", "anthropic", "ollama", "cloudflare"]
         }
+        self.routing_rules = routing_rules or default_rules
+        if fallback_chain:
+            self.routing_rules["default"] = fallback_chain
 
     def get_providers(self, task_type):
         return self.routing_rules.get(task_type, self.routing_rules["default"])
 
 import json
 from datetime import datetime
-
-from hpd_cli.config import load_config
 
 class UsageTracker:
     def __init__(self, log_file=None):
@@ -144,14 +242,21 @@ class UsageTracker:
 
 class AIRouter:
     def __init__(self):
+        load_dotenv_files()
+        self.config = load_config()
+        ai_config = self.config.get("ai", {})
         self.providers = {
             "gemini": GeminiProvider(),
             "openai": OpenAIProvider(),
             "anthropic": AnthropicProvider(),
             "cloudflare": CloudflareProvider(),
+            "deepseek": DeepSeekProvider(),
             "ollama": OllamaProvider()
         }
-        self.policy_engine = PolicyEngine()
+        self.policy_engine = PolicyEngine(
+            routing_rules=ai_config.get("routing_rules"),
+            fallback_chain=ai_config.get("fallback_chain"),
+        )
         self.tracker = UsageTracker()
 
     def generate_content(self, prompt, context=None, task_type="default", policy="balanced"):

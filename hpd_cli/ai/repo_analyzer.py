@@ -15,6 +15,13 @@ DATA_KEYWORDS = [
     "dashboard",
     "warehouse",
     "bi",
+    "notebook",
+    "jupyter",
+    "dags",
+    "dbt",
+    "spark",
+    "parquet",
+    "duckdb",
 ]
 
 
@@ -24,7 +31,9 @@ FILES_TO_CHECK = [
     "README.md",
     "docker-compose.yml",
     "compose.yml",
+    "Dockerfile",
     "hpd.config.json",
+    ".env.example",
 ]
 
 
@@ -39,6 +48,18 @@ def score_data_repo(repo):
             matched.append(keyword)
 
     path = Path(repo["path"])
+
+    marker_weights = {
+        "has_airflow": ("airflow", 3),
+        "has_sql": ("sql", 2),
+        "has_notebooks": ("notebook", 2),
+        "has_docker": ("docker", 1),
+        "has_hpd_config": ("hpd", 1),
+    }
+    for key, (label, points) in marker_weights.items():
+        if repo.get(key):
+            score += points
+            matched.append(label)
 
     for filename in FILES_TO_CHECK:
         file_path = path / filename
