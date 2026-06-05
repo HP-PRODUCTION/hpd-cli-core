@@ -1,0 +1,6 @@
+{
+  "name": "HPD CLI Core Control Plane",
+  "description": "Interactive control room and visual status board for the HPD CLI Core ecosystem, local server provisioning, and multi-project orchestrations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

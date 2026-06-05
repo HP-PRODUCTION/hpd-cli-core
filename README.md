@@ -1,3 +1,7 @@
+# Puertos asignados
+
+Consulta la lista de puertos oficiales y asignados para todos los proyectos en ../PUERTOS_HPD.md
+
 # Comandos avanzados y robustez
 
 ## setup --check

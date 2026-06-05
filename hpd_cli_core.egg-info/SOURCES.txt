@@ -10,6 +10,8 @@ hpd_cli/ai/context.py
 hpd_cli/ai/filesystem.py
 hpd_cli/ai/providers.py
 hpd_cli/ai/repo_analyzer.py
+hpd_cli/api/main.py
+hpd_cli/api/system_checks.py
 hpd_cli/commands/__init__.py
 hpd_cli/commands/ai.py
 hpd_cli/commands/backup.py
@@ -23,10 +25,13 @@ hpd_cli/commands/inversiones.py
 hpd_cli/commands/lab.py
 hpd_cli/commands/plataforma.py
 hpd_cli/commands/repo.py
+hpd_cli/commands/secure.py
 hpd_cli/commands/serverize.py
 hpd_cli/commands/services.py
+hpd_cli/commands/setup.py
 hpd_cli/commands/status.py
 hpd_cli/commands/system.py
+hpd_cli/commands/ui.py
 hpd_cli/commands/wordpress.py
 hpd_cli/core/__init__.py
 hpd_cli/core/config_validator.py
@@ -38,6 +43,7 @@ hpd_cli_core.egg-info/requires.txt
 hpd_cli_core.egg-info/top_level.txt
 tests/test_ai_filesystem.py
 tests/test_ai_router.py
+tests/test_cli_integration.py
 tests/test_system_clean.py
 tests/test_system_doctor.py
 tests/test_system_serverize.py

@@ -21,6 +21,7 @@ from hpd_cli.commands import (
     inversiones,
     setup,
     secure,
+    ui,
 )
 import os
 import importlib.util
@@ -73,6 +74,7 @@ def main():
     inversiones.setup_parser(subparsers)
     setup.setup_parser(subparsers)
     secure.setup_parser(subparsers)
+    ui.setup_parser(subparsers)
 
     # Load Plugins dynamically
     load_plugins(subparsers)
