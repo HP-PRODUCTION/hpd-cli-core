@@ -39,6 +39,18 @@ def test_services_help():
     assert "up" in result.stdout
 
 
+def test_check_help():
+    result = run_cli("check", "--help")
+    assert result.returncode == 0
+    assert "all" in result.stdout
+
+
+def test_check_unknown_project():
+    result = run_cli("check", "no-existe")
+    assert result.returncode == 2
+    assert "Proyecto desconocido" in result.stdout
+
+
 def test_secure_audit_json():
     result = run_cli("secure", "audit", "--path", ".", "--json")
     assert result.returncode == 0

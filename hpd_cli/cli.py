@@ -13,6 +13,7 @@ from hpd_cli.commands import (
     services,
     backup,
     status,
+    check,
     integrate,
     system,
     lab,
@@ -66,6 +67,7 @@ def main():
     services.setup_parser(subparsers)
     backup.setup_parser(subparsers)
     status.setup_parser(subparsers)
+    check.setup_parser(subparsers)
     integrate.setup_parser(subparsers)
     system.setup_parser(subparsers)
     lab.setup_parser(subparsers)
@@ -102,7 +104,9 @@ def main():
 
     # Dispatch execution
     if hasattr(args, "func"):
-        args.func(args)
+        result = args.func(args)
+        if isinstance(result, int):
+            sys.exit(result)
     else:
         print(f"Comando '{args.command}' no implementado todavia.")
 
