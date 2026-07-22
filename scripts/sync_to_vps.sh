@@ -19,7 +19,7 @@ git push origin robust-cli-2026
 
 # 3. Conectar a VPS y ejecutar pull + reinstalación
 echo "🖥️ Actualizando VPS..."
-ssh hpd@mx << 'EOF'
+ssh vps << 'EOF'
     cd /opt/hpd-cli-core
     git pull origin robust-cli-2026
     pip install -e .
