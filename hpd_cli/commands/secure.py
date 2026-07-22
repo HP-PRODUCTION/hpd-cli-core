@@ -17,6 +17,11 @@ SECRET_PATTERNS = (
     "private_key",
 )
 
+def audit(args):
+    """Auditoría de seguridad (placeholder)"""
+    print("🔍 Ejecutando auditoría de seguridad...")
+    # Implementación real aquí
+    return {"status": "ok", "findings": []}
 
 def setup_parser(subparsers):
     parser = subparsers.add_parser("secure", help="Auditoria de seguridad HPD")

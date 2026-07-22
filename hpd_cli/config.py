@@ -17,13 +17,13 @@ DEFAULT_CONFIG = {
         "backups": "data/backups"
     },
     "ai": {
-        "default_provider": "gemini",
-        "fallback_chain": ["gemini", "deepseek", "openai", "anthropic", "ollama", "cloudflare"],
+        "default_provider": "deepseek",
+        "fallback_chain": ["deepseek", "openai", "anthropic", "gemini", "ollama", "cloudflare"],
         "routing_rules": {
-            "code_generate": ["openai", "anthropic", "gemini", "deepseek", "ollama", "cloudflare"],
-            "architecture_review": ["anthropic", "openai", "gemini", "deepseek", "ollama"],
-            "fast_lookup": ["ollama", "deepseek", "cloudflare", "gemini", "openai"],
-            "default": ["gemini", "deepseek", "openai", "anthropic", "ollama", "cloudflare"]
+            "code_generate": ["deepseek", "openai", "anthropic", "gemini", "ollama", "cloudflare"],
+            "architecture_review": ["deepseek", "anthropic", "openai", "gemini", "ollama"],
+            "fast_lookup": ["deepseek", "ollama", "cloudflare", "gemini", "openai"],
+            "default": ["deepseek", "openai", "anthropic", "gemini", "ollama", "cloudflare"]
         }
     },
     "logging": {
@@ -94,6 +94,11 @@ def validate_env():
         load_dotenv(local_env)
 
     # Verificar credenciales necesarias
-    if not os.getenv("GEMINI_API_KEY") and not os.getenv("OPENAI_API_KEY"):
-        logger.warning("No se encontro GEMINI_API_KEY ni OPENAI_API_KEY en el entorno.")
+    if not any([
+        os.getenv("DEEPSEEK_API_KEY"),
+        os.getenv("GEMINI_API_KEY"),
+        os.getenv("GOOGLE_API_KEY"),
+        os.getenv("OPENAI_API_KEY"),
+    ]):
+        logger.warning("No se encontro DEEPSEEK_API_KEY, GEMINI_API_KEY ni OPENAI_API_KEY en el entorno.")
         logger.info("El modulo 'hpd ai' funcionara en modo simulado o arrojara error.")

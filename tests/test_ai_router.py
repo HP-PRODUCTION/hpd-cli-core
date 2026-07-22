@@ -5,6 +5,7 @@ from hpd_cli.ai_router import (
     AIRouter, PolicyEngine, GeminiProvider, OpenAIProvider,
     AnthropicProvider, OllamaProvider, DeepSeekProvider, BaseProvider
 )
+from hpd_cli.config import load_config
 
 
 class TestPolicyEngine:
@@ -22,15 +23,15 @@ class TestPolicyEngine:
         default = engine.get_providers("default")
         assert chain == default
 
-    def test_code_generate_prefers_openai(self):
+    def test_code_generate_prefers_deepseek(self):
         engine = PolicyEngine()
         chain = engine.get_providers("code_generate")
-        assert chain[0] == "openai"
+        assert chain[0] == "deepseek"
 
-    def test_fast_lookup_prefers_ollama(self):
+    def test_fast_lookup_prefers_deepseek(self):
         engine = PolicyEngine()
         chain = engine.get_providers("fast_lookup")
-        assert chain[0] == "ollama"
+        assert chain[0] == "deepseek"
 
     def test_all_task_types_have_at_least_2_providers(self):
         engine = PolicyEngine()
@@ -41,6 +42,13 @@ class TestPolicyEngine:
 
 class TestAIRouter:
     """Validate router initialization and fallback behavior."""
+
+    def test_default_config_prefers_deepseek(self):
+        config = load_config()
+        ai_config = config.get("ai", {})
+        assert ai_config.get("default_provider") == "deepseek"
+        assert ai_config.get("fallback_chain", [])[0] == "deepseek"
+        assert ai_config.get("routing_rules", {}).get("default", [])[0] == "deepseek"
 
     def test_router_has_all_providers(self):
         router = AIRouter()

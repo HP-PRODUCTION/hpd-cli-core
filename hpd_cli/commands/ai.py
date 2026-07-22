@@ -14,7 +14,7 @@ def setup_parser(subparsers):
 
     ask_parser = ai_subparsers.add_parser("ask", help="Preguntar al asistente de IA")
     ask_parser.add_argument("query", nargs="+", help="Tu pregunta para el AI")
-    ask_parser.add_argument("-p", "--provider", default="gemini_flash", help="Proveedor de IA (gemini, openai, flash, etc.)")
+    ask_parser.add_argument("-p", "--provider", default="deepseek", help="Proveedor de IA (deepseek, gemini, openai, anthropic, ollama, cloudflare)")
     ask_parser.add_argument("-c", "--context", choices=["none", "repo", "project", "fs"], default="none", help="Nivel de contexto a enviar")
     ask_parser.add_argument("--path", default=".", help="Directorio base para --context fs")
     ask_parser.add_argument("--depth", type=int, default=1, help="Profundidad de escaneo para --context fs")
@@ -53,6 +53,14 @@ def setup_parser(subparsers):
 
     ai_subparsers.add_parser("doctor", help="Diagnóstico de conectividad con proveedores")
 
+    chat_parser = ai_subparsers.add_parser("chat", help="Conversación natural con el asistente de IA")
+    chat_parser.add_argument("query", nargs="+", help="Tu mensaje en lenguaje natural")
+    chat_parser.add_argument("-c", "--context", choices=["none", "repo", "project", "fs"], default="repo", help="Nivel de contexto a enviar")
+    chat_parser.add_argument("--path", default=".", help="Directorio base para --context fs")
+    chat_parser.add_argument("--depth", type=int, default=1, help="Profundidad de escaneo para --context fs")
+    chat_parser.add_argument("--exclude", default="", help="Patrones separados por coma para excluir en --context fs")
+    chat_parser.add_argument("--cache", action="store_true", help="Usar cache local para --context fs")
+
     parser.set_defaults(func=execute)
 
 def execute(args):
@@ -87,6 +95,16 @@ def execute(args):
         compare_providers(question, config)
     elif args.ai_command == "doctor":
         run_doctor()
+    elif args.ai_command == "chat":
+        question = " ".join(args.query)
+        ask_ai(question, config,
+               provider="deepseek",
+               context_level=getattr(args, "context", "repo"),
+               fs_path=getattr(args, "path", "."),
+               fs_depth=getattr(args, "depth", 1),
+               fs_exclude=parse_excludes(getattr(args, "exclude", "")),
+               fs_cache=getattr(args, "cache", False),
+               task_type="default")
 
 def list_ai_capabilities():
     from rich.console import Console
@@ -101,6 +119,8 @@ def list_ai_capabilities():
     table.add_row("hpd ai doctor", "Diagnostico de credenciales, permisos y latencia")
     table.add_row("hpd ai repo scan", "Escanea proyectos locales con marcadores tecnicos")
     table.add_row("hpd ai repo analyze", "Detecta repositorios de datos/BI/ETL")
+    table.add_row("hpd ai ask --context repo", "Habla con el asistente en lenguaje natural usando DeepSeek con contexto del repositorio")
+    table.add_row("hpd ai ask --context project", "Usa el contexto del proyecto actual para responder preguntas y planificar cambios")
     table.add_row("hpd ai ask --context fs", "Pregunta al LLM con contexto del filesystem local")
     table.add_row("hpd ai patch", "Edicion asistida con diff y aprobacion manual")
 
@@ -184,7 +204,7 @@ def repo_analyze(path, depth=1, exclude=None, use_cache=False, as_json=False):
 def ask_ai(
     question,
     config,
-    provider="gemini_flash",
+    provider="deepseek",
     context_level="none",
     fs_path=".",
     fs_depth=1,
@@ -293,7 +313,7 @@ def compare_providers(question, config):
     console.print(f"\n[bold yellow]Comparando respuestas para:[/bold yellow] {question}\n")
 
     panels = []
-    for name in ["gemini", "openai", "anthropic"]:
+    for name in ["deepseek", "gemini", "openai", "anthropic"]:
         try:
             provider = router.providers[name]
             if provider.health_check():
