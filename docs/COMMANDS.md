@@ -68,6 +68,33 @@ Identifica archivos temporales y basura de Docker de forma segura.
 
 ---
 
+# ✅ hpd check
+
+## Portafolio completo
+```bash
+hpd check all
+hpd check all --json
+```
+Ejecuta chequeos transversales del ecosistema HPD:
+- Docker y Docker Compose.
+- Espacio y memoria disponibles.
+- Ollama/DeepSeek por API local.
+- Existencia de proyectos.
+- Estado Git y remotes.
+- Archivos productivos esperados.
+- Compose config cuando aplique.
+- Pruebas, backup y puertos registrados.
+
+## Proyecto especifico
+```bash
+hpd check wordpress-docker
+hpd check Plataforma_deportiva
+hpd check dropshipping-ebay
+```
+Permite validar un proyecto sin recorrer todo el portafolio.
+
+---
+
 # 🧪 hpd lab
 
 ## Estado

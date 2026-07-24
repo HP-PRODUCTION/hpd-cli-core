@@ -1,0 +1,17 @@
+# Template systemd unit for HPD CLI Core
+# Copy to /etc/systemd/system/hpd-cli.service and edit User/WorkingDirectory as needed
+
+[Unit]
+Description=HPD CLI Core API
+After=network.target
+
+[Service]
+Type=simple
+User=hpd
+WorkingDirectory=/home/hpd/hpd-cli-core
+# Use the venv python/uvicorn path
+ExecStart=/home/hpd/hpd-cli-core/venv/bin/uvicorn hpd_cli.api.main:app --host 0.0.0.0 --port 3001
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

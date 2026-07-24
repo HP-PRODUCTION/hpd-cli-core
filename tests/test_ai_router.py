@@ -3,8 +3,9 @@ import pytest
 from unittest.mock import patch, MagicMock
 from hpd_cli.ai_router import (
     AIRouter, PolicyEngine, GeminiProvider, OpenAIProvider,
-    AnthropicProvider, OllamaProvider, BaseProvider
+    AnthropicProvider, OllamaProvider, DeepSeekProvider, BaseProvider
 )
+from hpd_cli.config import load_config
 
 
 class TestPolicyEngine:
@@ -22,15 +23,15 @@ class TestPolicyEngine:
         default = engine.get_providers("default")
         assert chain == default
 
-    def test_code_generate_prefers_openai(self):
+    def test_code_generate_prefers_deepseek(self):
         engine = PolicyEngine()
         chain = engine.get_providers("code_generate")
-        assert chain[0] == "openai"
+        assert chain[0] == "deepseek"
 
-    def test_fast_lookup_prefers_ollama(self):
+    def test_fast_lookup_prefers_deepseek(self):
         engine = PolicyEngine()
         chain = engine.get_providers("fast_lookup")
-        assert chain[0] == "ollama"
+        assert chain[0] == "deepseek"
 
     def test_all_task_types_have_at_least_2_providers(self):
         engine = PolicyEngine()
@@ -42,15 +43,30 @@ class TestPolicyEngine:
 class TestAIRouter:
     """Validate router initialization and fallback behavior."""
 
-    def test_router_has_all_providers(self):
+    def test_default_config_prefers_deepseek(self):
+        config = load_config()
+        ai_config = config.get("ai", {})
+        assert ai_config.get("default_provider") == "deepseek"
+        assert ai_config.get("fallback_chain", [])[0] == "deepseek"
+        assert ai_config.get("routing_rules", {}).get("default", [])[0] == "deepseek"
+
+    @patch.dict("os.environ", {
+        "DEEPSEEK_API_KEY": "test-deepseek",
+        "OPENAI_API_KEY": "test-openai",
+        "ANTHROPIC_API_KEY": "test-anthropic",
+        "GEMINI_API_KEY": "test-gemini",
+    })
+    @patch.object(OllamaProvider, "health_check", return_value=True)
+    def test_router_has_all_providers(self, mock_ollama_health):
         router = AIRouter()
-        expected = {"gemini", "openai", "anthropic", "cloudflare", "ollama"}
+        expected = {"gemini", "openai", "anthropic", "deepseek", "deepseek-reasoner", "ollama"}
         assert set(router.providers.keys()) == expected
 
-    def test_router_falls_back_on_failure(self):
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"})
+    @patch.object(OpenAIProvider, "generate", return_value="OK")
+    def test_router_falls_back_on_failure(self, mock_generate):
         """If first provider fails, router should try the next one."""
         router = AIRouter()
-        # OpenAI simulator always works, so this should eventually succeed
         result = router.generate_content("test prompt", task_type="default")
         assert result is not None
         assert len(result) > 0
@@ -60,19 +76,40 @@ class TestAIRouter:
         status = router.get_status()
         assert "gemini" in status
         assert "openai" in status
-        assert status["openai"] == "AVAILABLE"  # simulator always up
 
 
 class TestProviderHealthChecks:
     """Validate individual provider health check logic."""
 
-    def test_openai_simulator_always_healthy(self):
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"})
+    def test_openai_healthy_with_key(self):
         provider = OpenAIProvider()
         assert provider.health_check() is True
 
-    def test_anthropic_simulator_always_healthy(self):
+    @patch.dict("os.environ", {}, clear=True)
+    def test_openai_unhealthy_without_key(self):
+        provider = OpenAIProvider()
+        assert provider.health_check() is False
+
+    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key-123"})
+    def test_anthropic_healthy_with_key(self):
         provider = AnthropicProvider()
         assert provider.health_check() is True
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_anthropic_unhealthy_without_key(self):
+        provider = AnthropicProvider()
+        assert provider.health_check() is False
+
+    @patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key-123"})
+    def test_deepseek_healthy_with_key(self):
+        provider = DeepSeekProvider()
+        assert provider.health_check() is True
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_deepseek_unhealthy_without_key(self):
+        provider = DeepSeekProvider()
+        assert provider.health_check() is False
 
     @patch.dict("os.environ", {"GEMINI_API_KEY": "test-key-123"})
     def test_gemini_healthy_with_key(self):

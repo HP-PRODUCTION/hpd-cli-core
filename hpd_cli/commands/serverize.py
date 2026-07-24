@@ -6,6 +6,8 @@ import os
 import shutil
 import socket
 import subprocess
+import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
@@ -92,6 +94,13 @@ PROJECTS: dict[str, dict[str, Any]] = {
         "path": workspace_path("palabra-viva-factory"),
         "kind": "python-video-factory",
         "prod_files": ["requirements.txt"],
+        "ports": [],
+    },
+    "fitsupport-services": {
+        "path": workspace_path("fitsupport-services"),
+        "kind": "docker-fastapi-saas",
+        "prod_files": ["docker-compose.yml", "requirements.txt", "alembic.ini"],
+        "compose_files": ["docker-compose.yml"],
         "ports": [],
     },
     "inversiones": {
@@ -259,6 +268,47 @@ def check_memory_available() -> CheckResult:
         status=CheckStatus.PASS,
         message=f"Memoria disponible suficiente: {available_gb} GB.",
         details={"minimum_gb": MIN_MEMORY_FREE_GB},
+    )
+
+
+def check_ollama_api() -> CheckResult:
+    url = os.getenv("HPD_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+    request = urllib.request.Request(f"{url}/api/tags")
+
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        return CheckResult(
+            name="ai.ollama_api",
+            status=CheckStatus.WARN,
+            message=f"Ollama no responde en {url}.",
+            details={"error": str(exc)[-500:]},
+        )
+
+    models = [
+        str(model.get("name", ""))
+        for model in payload.get("models", [])
+        if isinstance(model, dict)
+    ]
+    has_deepseek_14b = any(
+        "deepseek-r1" in model.lower() and "14b" in model.lower()
+        for model in models
+    )
+
+    if not has_deepseek_14b:
+        return CheckResult(
+            name="ai.deepseek_r1_14b",
+            status=CheckStatus.WARN,
+            message="Ollama responde, pero no se detectó DeepSeek-R1 14B.",
+            details={"models": models},
+        )
+
+    return CheckResult(
+        name="ai.deepseek_r1_14b",
+        status=CheckStatus.PASS,
+        message="Ollama responde y DeepSeek-R1 14B está disponible.",
+        details={"models": models},
     )
 
 
@@ -585,6 +635,7 @@ def run_host_checks() -> list[CheckResult]:
         check_docker_compose_available(),
         check_disk_space(),
         check_memory_available(),
+        check_ollama_api(),
     ]
 
 

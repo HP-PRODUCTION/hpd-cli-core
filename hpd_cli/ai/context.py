@@ -103,6 +103,14 @@ def format_filesystem_context(base_path=".", depth=1, exclude=None, use_cache=Fa
             markers.append("docker")
         if repo["has_hpd_config"]:
             markers.append("hpd")
+        if repo.get("has_airflow"):
+            markers.append("airflow")
+        if repo.get("has_sql"):
+            markers.append("sql")
+        if repo.get("has_notebooks"):
+            markers.append("notebooks")
+        if repo.get("has_wordpress"):
+            markers.append("wordpress")
 
         keywords = ", ".join(repo["matched_keywords"]) or "-"
         lines.append(

@@ -15,13 +15,37 @@ DEFAULT_CONFIG = {
         "logs": "data/logs",
         "staging": "data/staging",
         "backups": "data/backups"
+    },
+    "ai": {
+        "default_provider": "deepseek",
+        "fallback_chain": ["deepseek", "openai", "anthropic", "gemini", "ollama", "cloudflare"],
+        "routing_rules": {
+            "code_generate": ["deepseek", "openai", "anthropic", "gemini", "ollama", "cloudflare"],
+            "architecture_review": ["deepseek", "anthropic", "openai", "gemini", "ollama"],
+            "fast_lookup": ["deepseek", "ollama", "cloudflare", "gemini", "openai"],
+            "default": ["deepseek", "openai", "anthropic", "gemini", "ollama", "cloudflare"]
+        }
+    },
+    "logging": {
+        "level": "INFO",
+        "max_bytes": 1048576,
+        "backup_count": 5
     }
 }
+
+def deep_merge(base, override):
+    result = dict(base)
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 def load_config():
     # Load global config first
     global_config_path = os.path.expanduser("~/.hpd/config.yaml")
-    config = DEFAULT_CONFIG.copy()
+    config = deep_merge({}, DEFAULT_CONFIG)
 
     if os.path.exists(global_config_path):
         try:
@@ -29,7 +53,7 @@ def load_config():
             with open(global_config_path, "r") as f:
                 global_config = yaml.safe_load(f)
                 if global_config:
-                    config.update(global_config)
+                    config = deep_merge(config, global_config)
         except Exception:
             pass
 
@@ -39,7 +63,7 @@ def load_config():
             with open(CONFIG_FILE, 'r') as f:
                 local_config = json.load(f)
                 if local_config:
-                    config.update(local_config)
+                    config = deep_merge(config, local_config)
         except json.JSONDecodeError:
             from hpd_cli import logger
             logger.error(f"{CONFIG_FILE} no es un JSON valido.")
@@ -70,6 +94,11 @@ def validate_env():
         load_dotenv(local_env)
 
     # Verificar credenciales necesarias
-    if not os.getenv("GEMINI_API_KEY") and not os.getenv("OPENAI_API_KEY"):
-        logger.warning("No se encontro GEMINI_API_KEY ni OPENAI_API_KEY en el entorno.")
+    if not any([
+        os.getenv("DEEPSEEK_API_KEY"),
+        os.getenv("GEMINI_API_KEY"),
+        os.getenv("GOOGLE_API_KEY"),
+        os.getenv("OPENAI_API_KEY"),
+    ]):
+        logger.warning("No se encontro DEEPSEEK_API_KEY, GEMINI_API_KEY ni OPENAI_API_KEY en el entorno.")
         logger.info("El modulo 'hpd ai' funcionara en modo simulado o arrojara error.")

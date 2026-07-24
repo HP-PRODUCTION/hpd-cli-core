@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.whl
+**/__pycache__/
+
+# Environment
+.env
+.env.*
+venv/
+.venv/
+*.venv
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Logs & data
+data/logs/
+data/backups/
+*.log
+*.jsonl
+
+# Tests & docs
+tests/
+docs/
+*.md
+
+# CI
+.github/
+
+# Deploy scripts
+scripts/
+deploy/
+
+# Session state
+.copilot/
