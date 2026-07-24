@@ -1,33 +1,151 @@
-# 📍 Punto de Encuentro: HPD CLI Core
+# 📍 PUNTO DE ENCUENTRO — HPD CORE
 
-**Fecha**: 2026-07-21
-**Contexto**: Consolidación del control plane con IA conversacional, soporte para DeepSeek y preparación operativa para despliegue en VPS.
+**Actualizado:** 24 Julio 2026
+**Estado:** ✅ Ronda 1 (9/9) + Ronda 2 (6/6) + Ronda 3 (7/7) completadas
+**Enfoque:** CLI-first — administración y desarrollo desde terminal
 
 ---
 
-## 🛠️ Estado Técnico Actual
+## Resumen de lo logrado
 
-### 1. Hardening & Seguridad (EPIC-HARDEN-01)
+### Ronda 1 — Endurecimiento (9/9)
+| # | Mejora | Estado |
+|---|---|---|
+| 1 | 🔀 Merge robust-cli-2026 → master | ✅ |
+| 2 | ⚙️ Systemd service (hpd-api.service, puerto 3100) | ✅ |
+| 3 | 🚀 Deploy script automatizado | ✅ |
+| 4 | 🗄️ Modelos SQLAlchemy + Alembic | ✅ |
+| 5 | 🔖 API versionado (/api/v1/) | ✅ |
+| 6 | 🔐 GPG Secret Vault | ✅ |
+| 7 | 📊 Dashboard Web UI (React SPA en /) | ✅ |
+| 8 | ⌨️ Autocompletado CLI (argcomplete) | ✅ |
+| 9 | 📝 OpenAPI docs (Swagger + Redoc) | ✅ |
 
-- **Error Handling**: Eliminados todos los `bare except:`. Captura de excepciones tipadas en todo el core.
-- **AI Safety**: Implementada **Denylist de Seguridad** en `build_context` y `ai patch`. Protege archivos `.env`, `secrets`, `keys`, etc.
-- **Arquitectura**: `AIRouter` convertido a **Singleton** (`get_ai_router()`) para optimización de recursos.
-- **Dependencias**: Formalizadas en `pyproject.toml` (incluyendo `psutil`, `python-dotenv`, `requests`, `rich`, `SQLAlchemy` y `google-genai`).
-- **IA operativa**: Añadido soporte nativo para DeepSeek como proveedor principal, con `hpd ai ask` y `hpd ai chat` listos para usarse en local y en VPS.
+### Ronda 2 — Escalabilidad (6/6)
+| # | Mejora | Estado |
+|---|---|---|
+| 1 | 🐳 **Docker Compose multi-servicio** | ✅ |
+| 2 | 🔑 **Autenticación JWT** (HMAC-SHA256) | ✅ |
+| 3 | 🐘 **Soporte PostgreSQL** (SQLite + PG) | ✅ |
+| 4 | 🔄 **Redis cache + rate limiting distribuido** | ✅ |
+| 5 | ⚡ **Workers asíncronos** (background threads) | ✅ |
+| 6 | 🤖 **CI/CD completo** (lint → test → docker → deploy) | ✅ |
 
-### 2. Testing & Calidad (EPIC-CI-01)
+### Ronda 3 — Mantenimiento y puesta operativa (7/7)
+| # | Tarea | Detalle | Estado |
+|---|---|---|---|
+| 1 | 🐛 **Fix dashboard/data endpoint** | Campos faltantes `secureEnvPerms`, `gitIgnoredSecrets`, `version` en response dict | ✅ |
+| 2 | 🌐 **Exponer API via Caddy + subruta** | `ia.matutino.online/hpd/` → `localhost:3100` con SSL automático | ✅ |
+| 3 | 🚀 **Commit + Push a GitHub** | Fix commiteado como `8e6e4bd` y pusheado a `origin/master` | ✅ |
+| 4 | 📦 **Deploy a VPS** | `git pull` + `systemctl restart hpd-api` desde GitHub | ✅ |
+| 5 | ✅ **Health checks verificados** | 6/6 endpoints respondiendo: health, version, dashboard, metrics, swagger, redoc | ✅ |
+| 6 | ⌨️ **Autocompletado CLI instalado** | `argcomplete` + `eval "$(register-python-argcomplete hpd)"` en `~/.bashrc` | ✅ |
+| 7 | 🔐 **GPG Vault verificado** | Clave RSA 4096 lista, `.env.gpg` operativo | ✅ |
 
-- **Suite de Pruebas**: 19 tests operativos del router de IA (`pytest -q tests/test_ai_router.py`).
-- **Cobertura**: Health checks de proveedores, fallback, configuración por defecto y uso de DeepSeek como proveedor preferido.
-- **Integración**: Validado el flujo de `hpd ai chat` y `hpd ai ask` con contexto de repositorio.
+---
 
-### 2.1 AI Local-Aware (EPIC-AI-FS-01)
+## Detalle de implementaciones
 
-- **Comandos implementados**:
-  - `hpd ai ls`
-  - `hpd ai repo scan --path <path> --depth <n> --exclude <terms> --json`
-  - `hpd ai repo analyze --path <path> --depth <n> --cache --json`
-  - `hpd ai ask --context fs --path <path> --depth <n> "..."`
+### 🐳 Docker Compose
+- `Dockerfile` multi-stage (builder + runtime, python:3.11-slim)
+- `docker-compose.yml` con hpd-api, redis (profile:full), postgres (profile:full)
+- Redis y PostgreSQL como servicios opcionales con `--profile full`
+- Health checks, volúmenes persistentes, red interna `hpd-network`
+
+### 🔑 JWT Auth
+- Implementación HMAC-SHA256 sin dependencias externas
+- Tokens access (1h) y refresh (30d)
+- Endpoints: `POST /api/v1/auth/login`, `/refresh`, `GET /api/v1/auth/verify`
+
+### 🐘 PostgreSQL
+- Auto-detecta PostgreSQL vs SQLite en `db.py`
+- Pool settings para producción (`pool_size`, `max_overflow`, `pool_pre_ping`)
+- Alembic configurado para ambos motores
+
+### 🔄 Redis Cache
+- `hpd_cli/cache.py`: Redis con fallback automático a dict en memoria
+- Rate limiters migrados a `check_rate_limit()` con soporte Redis
+- Operaciones: get/set/delete/incr/expire
+
+### ⚡ Workers Asíncronos
+- `hpd_cli/workers.py`: decorador `@async_task` para background threads
+- Endpoints: `POST /api/v1/tasks/health-check`, `GET /api/v1/tasks/{id}`
+- Almacenamiento de resultados en Redis o memoria
+
+### 🤖 CI/CD
+- 4 jobs: lint (ruff) → test (3.11, 3.12) → docker (Trivy scan) → deploy (SSH)
+- Push a GitHub Container Registry (ghcr.io) en master
+- Deploy automático a VPS via appleboy/ssh-action
+
+---
+
+## Estado de la infraestructura
+
+| Componente | Estado | Puerto | Acceso |
+|---|---|---|---|
+| hpd-api (VPS) | ✅ Activo | 3100 | Via Caddy /hpd/ |
+| Caddy (SSL) | ✅ Activo | 80/443 | Proxy inverso con TLS |
+| DeepSeek API | ✅ Configurado | — | — |
+| Docker Daemon | ✅ Activo | — | — |
+| Dashboard UI | ✅ Funcional | via /hpd/ | — |
+| JWT Auth | ✅ Operativo | — | — |
+| CLI local | ✅ 26 comandos | — | `hpd status`, `check`, `vault`, etc. |
+| Redis | 🟡 Opcional (profile:full) | 6379 | — |
+| PostgreSQL | 🟡 Opcional (profile:full) | 5432 | — |
+
+## Accesos
+- **API + Dashboard**: `https://ia.matutino.online/hpd/`
+- **API Health**: `https://ia.matutino.online/hpd/api/v1/system/health`
+- **API Version**: `https://ia.matutino.online/hpd/api/v1/version`
+- **Dashboard Data**: `https://ia.matutino.online/hpd/api/v1/dashboard/data`
+- **Swagger Docs**: `https://ia.matutino.online/hpd/docs`
+- **Redoc**: `https://ia.matutino.online/hpd/redoc`
+- **Prometheus Metrics**: `https://ia.matutino.online/hpd/metrics`
+
+---
+
+## Comandos útiles
+
+```bash
+# ========== CLI (local) ==========
+hpd status all               # Estado global de proyectos
+hpd check all                # Auditoría total (71 PASS / 96 checks)
+hpd check all --json         # Salida JSON para scripting
+hpd system doctor            # Diagnóstico CPU, RAM, disco, Docker
+hpd system doctor --history  # Guardar instantánea histórica
+hpd vault init               # Inicializar vault GPG
+hpd vault encrypt            # Cifrar ~/.hpd/.env
+hpd vault view               # Ver secretos (ocultos parcialmente)
+hpd db migrate               # Aplicar migraciones SQLAlchemy/Alembic
+hpd completion bash          # Agregar a ~/.bashrc para tab-completion
+
+# ========== API (remoto) ==========
+curl -s https://ia.matutino.online/hpd/api/v1/system/health   # Health check
+curl -s https://ia.matutino.online/hpd/api/v1/version          # Versión
+curl -s https://ia.matutino.online/hpd/api/v1/dashboard/data   # Dashboard data
+
+# ========== Mantenimiento VPS ==========
+ssh vps "cd /opt/hpd/hpd-cli-core && systemctl restart hpd-api"  # Reiniciar API
+ssh vps "journalctl -u hpd-api -n 20 --no-pager"                 # Logs API
+ssh vps "systemctl status caddy --no-pager -l"                    # Estado Caddy
+
+# ========== Docker ==========
+cd HPD-CORE && docker compose --profile full up -d     # Full stack (con Redis + PG)
+cd HPD-CORE && docker compose up -d                    # Solo API
+
+# ========== Tests ==========
+cd HPD-CORE && python -m pytest tests/ -q
+```
+
+---
+
+## Próximos pasos (propuestos)
+
+- 🔴 API Gateway (Traefik/NGINX) para SSL + routing multi-VPS
+- 🟡 Health check con alertas (Telegram/Discord)
+- 🟢 Plugin Marketplace firmado con GPG
+- 🟢 Modo cluster multi-worker (gunicorn)
+- 🟢 Pruebas de integración asíncronas (pytest-asyncio)
   - `hpd ai chat "..." --context repo`
 - **Cache local**: `~/.hpd/cache`.
 - **Accesos rápidos**: `hpdai "..."` y `hpdask "..."` para usar el asistente desde cualquier carpeta.
@@ -51,27 +169,35 @@
 
 ---
 
-## 🚀 Próximos Pasos (Backlog Inmediato)
+## 🚀 Próximos Pasos — CLI-First Roadmap
 
-1. **Consolidación post-sync**
-    - ✅ Sincronización bidireccional local ↔ VPS completada.
-    - ✅ Integrados 6 comandos desde VPS (autonomous, agent, diagnose, projects, run, suggest).
-    - ✅ 68 tests pasando, push a GitHub, VPS actualizada.
-    - ⬜ **Merge robust-cli-2026 → master** para unificar ramas.
-    - ⬜ **Systemd service** para `hpd api` en VPS.
-    - ⬜ **Deploy script** automatizado (git pull → install → restart).
-2. **EPIC-WP-STABILIZE-01 — Endurecimiento de plugins editoriales/económicos**
-    - T-01 Validar estado de plugins desde WP-CLI.
-    - T-02 Crear smoke test operativo para hpd-auto-publicador.
-    - T-03 Crear smoke test operativo para hpd-economico.
-    - T-04 Añadir comando `hpd wordpress doctor` al Control Plane.
-    - T-05 Actualizar documentación final de WordPress.
-3. **EPIC-WP-MONETIZACION-01 — Anuncios, patrocinios y sostenibilidad**
-    - Definir inventario de zonas y crear plugin `hpd-monetizacion`.
-4. **EPIC-WP-SEO-01 — SEO editorial y técnico**
-    - Implementar Schema NewsArticle, Open Graph y News Sitemap.
-5. **EPIC-WP-INTEGRATION-01: Dropshipping Bridge (DIFERIDO)**
-    - Crear puente para publicar reseñas de productos en WordPress (prioridad baja).
+### 🔴 Fase crítica (prioridad máxima)
+| # | Tarea | Área | Dependencias |
+|---|-------|------|-------------|
+| 1 | **Migrar a PostgreSQL** — Migrar de SQLite a Postgres con pool de conexiones para escalar multi-usuario | CLI (`hpd db`) + API | — |
+| 2 | **Autenticación JWT completa** — JWT con refresh tokens y RBAC para sesiones persistentes desde CLI | CLI (`hpd auth`) + API | — |
+| 3 | **Workers asíncronos** — Tareas largas (ETL, deploys) ejecutándose en background desde CLI | CLI (`hpd task`) | — |
+| 4 | **Docker Compose producción** — Unificar API, DB, dashboard y workers en containers reproducibles | Deploy | — |
+
+### 🟡 Fase mejoras
+| # | Tarea | Área |
+|---|-------|------|
+| 5 | **Redis cache + rate limiting** — Rate limiting persistente y caché de respuestas | CLI + API |
+| 6 | **CI/CD tests integración** — pytest-asyncio + GitHub Actions + deploy automático | Calidad |
+| 7 | **Modo cluster multi-worker** — gunicorn + uvicorn workers para throughput | Deploy |
+
+### 🟢 Fase visión
+| # | Tarea |
+|---|-------|
+| 8 | **Plugin Marketplace** — Plugins firmados con GPG desde CLI (`hpd plugin`) |
+| 9 | **API Gateway distribuido** — Traefik/NGINX multi-VPS |
+| 10 | **Health check con alertas** — Notificaciones Telegram/Discord |
+
+### EPIC-WP (paralelo)
+- **WP-STABILIZE-01**: Endurecimiento plugins editoriales/económicos
+- **WP-MONETIZACION-01**: Anuncios, patrocinios y sostenibilidad
+- **WP-SEO-01**: Schema NewsArticle, Open Graph, News Sitemap
+- **WP-INTEGRATION-01**: Dropshipping Bridge (diferido)
 
 ---
 
@@ -197,4 +323,24 @@ Python 3.11 + 3.12 → compileall + pytest → Docker build → Trivy scan
 | 6 | **OpenAPI docs** | Documentar endpoints existentes para `/docs` de FastAPI |
 
 > [!IMPORTANT]
-> El sistema está en estado **VERDE** — 68 tests pasando, CI con 2 versiones de Python + Docker + Trivy, logging JSON estructurado, métricas Prometheus, contenedor seguro con usuario no-root, API keys funcionales, rate limiting activo.
+> ## Estado actual del sistema (24 Jul 2026)
+>
+> ### ✅ Operativo
+> - **API**: `https://ia.matutino.online/hpd/` — Health, Version, Dashboard, Metrics, Docs
+> - **CLI (local)**: 26 comandos — 71 tests PASS, 0 FAIL, 96 checks totales
+> - **Autocompletado**: Tab-completion activo en bash
+> - **Vault GPG**: Clave RSA 4096 con cifrado de `.env`
+> - **Git**: Commit `8e6e4bd` en `origin/master`, VPS sincronizado
+> - **Caddy**: Proxy inverso con SSL automático, ruta `/hpd/` → hpd-api
+>
+> ### 📊 Métricas
+> | Indicador | Valor |
+> |-----------|-------|
+> | Tests | 71 PASS / 0 FAIL / 96 total |
+> | CLI commands | 26 |
+> | API endpoints | 6 rutas activas |
+> | Vault | GPG 4096-bit RSA |
+> | CI/CD | GitHub Actions (lint + test + docker + deploy) |
+>
+> ### 🔜 Siguiente
+> Próxima sesión: **Fase crítica** — PostgreSQL, JWT, Workers asíncronos
