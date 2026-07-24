@@ -1,4 +1,5 @@
 import os
+import json
 import datetime
 import logging
 from logging.handlers import RotatingFileHandler
@@ -90,3 +91,41 @@ def debug(message):
 
 def ask(question):
     return console.input(f"[highlight]? {question}[/highlight] ")
+
+
+# --- JSON structured logging ---
+
+_JSON_LOG_ENABLED = os.getenv("HPD_JSON_LOG", "").lower() in ("1", "true", "yes")
+_json_logger = None
+
+def _get_json_logger():
+    global _json_logger
+    if _json_logger:
+        return _json_logger
+    log_file = os.path.join(LOGS_DIR, "hpd.jsonl")
+    handler = RotatingFileHandler(
+        log_file,
+        maxBytes=5_242_880,  # 5 MB
+        backupCount=3,
+    )
+    _json_logger = logging.getLogger("hpd_cli_json")
+    _json_logger.setLevel(logging.DEBUG)
+    _json_logger.handlers = [handler]
+    _json_logger.propagate = False
+    return _json_logger
+
+def log_json(level: str, event: str, **extra):
+    """Escribe una entrada JSON estructurada a hpd.jsonl."""
+    if not _JSON_LOG_ENABLED:
+        return
+    try:
+        record = {
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "level": level,
+            "event": event,
+            "logger": "hpd_cli",
+        }
+        record.update(extra)
+        _get_json_logger().info(json.dumps(record, default=str))
+    except Exception:
+        pass  # No romper la app si falla el logging JSON

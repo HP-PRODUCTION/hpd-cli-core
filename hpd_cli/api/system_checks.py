@@ -40,8 +40,8 @@ def has_secure_env_perms() -> bool:
     except Exception:
         return False
 
-def is_gemini_key_set() -> bool:
-    return "GEMINI_API_KEY" in os.environ
+def is_deepseek_key_set() -> bool:
+    return "DEEPSEEK_API_KEY" in os.environ
 
 def are_secrets_git_ignored() -> bool:
     # Verificación simulada avanzada (asumimos True por defecto si existe .gitignore con .env)

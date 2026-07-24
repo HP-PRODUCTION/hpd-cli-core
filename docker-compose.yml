@@ -10,5 +10,5 @@ services:
     volumes:
       - ./:/app
     environment:
-      HPD_UI_TOKEN: "devtoken"
+      HPD_UI_TOKEN: "${HPD_UI_TOKEN:-cambiar_por_token_seguro}"
     restart: unless-stopped

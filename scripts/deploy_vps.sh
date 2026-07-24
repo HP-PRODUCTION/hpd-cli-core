@@ -41,7 +41,8 @@ DEEPSEEK_API_KEY=
 DEEPSEEK_MODEL=deepseek-chat
 EOF
   chown ${USER}:${USER} "${HPD_HOME}/.env"
-  echo "Created ${HPD_HOME}/.env - edit it to add DEEPSEEK_API_KEY"
+  chmod 600 "${HPD_HOME}/.env"
+  echo "Created ${HPD_HOME}/.env (chmod 600) - edit it to add DEEPSEEK_API_KEY"
 fi
 
 # Install systemd service (requires sudo)

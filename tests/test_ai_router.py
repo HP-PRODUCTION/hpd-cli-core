@@ -50,9 +50,16 @@ class TestAIRouter:
         assert ai_config.get("fallback_chain", [])[0] == "deepseek"
         assert ai_config.get("routing_rules", {}).get("default", [])[0] == "deepseek"
 
-    def test_router_has_all_providers(self):
+    @patch.dict("os.environ", {
+        "DEEPSEEK_API_KEY": "test-deepseek",
+        "OPENAI_API_KEY": "test-openai",
+        "ANTHROPIC_API_KEY": "test-anthropic",
+        "GEMINI_API_KEY": "test-gemini",
+    })
+    @patch.object(OllamaProvider, "health_check", return_value=True)
+    def test_router_has_all_providers(self, mock_ollama_health):
         router = AIRouter()
-        expected = {"gemini", "openai", "anthropic", "cloudflare", "deepseek", "ollama"}
+        expected = {"gemini", "openai", "anthropic", "deepseek", "deepseek-reasoner", "ollama"}
         assert set(router.providers.keys()) == expected
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"})

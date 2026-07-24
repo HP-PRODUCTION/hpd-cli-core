@@ -79,5 +79,83 @@
 - **Tests**: Antes de cualquier cambio, correr `python3 -m pytest -q`.
 - **Seguridad**: La Denylist está en `hpd_cli/ai/context.py` y `hpd_cli/commands/ai.py`.
 
+---
+
+## 🛡️ Hardening de Seguridad (Completado 2026-07-23)
+
+### EPIC-HARDEN-02 — Endurecimiento estructural
+
+| # | Tarea | Archivo | Estado |
+|---|-------|---------|--------|
+| 1 | **Plugins inseguros** — `load_plugins()` exige `HPD_PLUGINS_ENABLED=true` + whitelist SHA-256 | `hpd_cli/cli.py` | ✅ |
+| 2 | **CORS con lista blanca** — lee `CORS_ORIGINS` del entorno (default localhost) | `hpd_cli/api/main.py` | ✅ |
+| 3 | **Token hardcodeado** — `HPD_UI_TOKEN` via env var con fallback seguro | `docker-compose.yml` | ✅ |
+| 4 | **Permisos .env** — `chmod 600` en script de deploy | `scripts/deploy_vps.sh` | ✅ |
+| 5 | **API keys rotas** — `OpenAIProvider` y `DeepSeekProvider` enviaban `******` literal; corregido a `Bearer {api_key}` | `hpd_cli/ai_router.py` | ✅ |
+| 6 | **tenacity** en dependencias — requerido por retry logic ya en uso | `pyproject.toml` | ✅ |
+| 7 | **Rate limiting** — `/api/system/health` limitado a 30 req/60s por IP | `hpd_cli/api/main.py` | ✅ |
+| 8 | **Health check DeepSeek** — verifica `DEEPSEEK_API_KEY` en vez de `GEMINI_API_KEY` | `hpd_cli/api/system_checks.py` | ✅ |
+
+---
+
+## 📈 Robustecimiento para escalar (Completado 2026-07-23)
+
+### EPIC-ROBUSTEZ-01 — CI/CD, monitoreo y contenedores seguros
+
+| # | Tarea | Archivos | Estado |
+|---|-------|----------|--------|
+| 1 | **Tests en CI** — 68 tests pasando (antes 59/60), cobertura de rate limiter, health checks, métricas Prometheus y validación de tokens. CI matrix Python 3.11 + 3.12 en todos los branches | `.github/workflows/ci.yml`, `tests/test_api_health.py`, `tests/test_ai_router.py` | ✅ |
+| 2 | **Logging JSON estructurado** — Nuevo `log_json()` que escribe a `~/.hpd/logs/hpd.jsonl`. Activado con `HPD_JSON_LOG=true`. Registro estructurado de health checks | `hpd_cli/logger.py`, `hpd_cli/api/main.py` | ✅ |
+| 3 | **Métricas Prometheus** — Endpoint `/metrics` con contadores de requests, latencia, health checks y requests activos. Middleware ASGI automático | `hpd_cli/api/metrics.py`, `hpd_cli/api/main.py` | ✅ |
+| 4 | **Docker seguro** — Multi-stage build (builder + runtime slim), usuario `hpd` no-root (uid 999), `.dockerignore` con exclusión de secretos/cachés/entornos | `Dockerfile`, `.dockerignore` | ✅ |
+| 5 | **Escaneo Trivy** — Job Docker en CI que construye la imagen y escanea vulnerabilidades HIGH/CRITICAL | `.github/workflows/ci.yml` | ✅ |
+
+### 🔬 Detalle técnico
+
+```
+# La imagen Docker final:
+USER hpd                    # No-root
+FROM python:3.11-slim       # Base mínima
+.dockerignore               # Excluye .env, venv, cachés, tests, docs, .git, .github
+
+# Prometheus en /metrics:
+hpd_http_requests_total         # Total requests (method, endpoint, status)
+hpd_http_request_duration_seconds  # Latencia en buckets
+hpd_health_checks_total         # Health checks acumulados
+hpd_active_requests             # Requests concurrentes
+
+# JSON logging (HPD_JSON_LOG=true):
+~/.hpd/logs/hpd.jsonl → {"timestamp":"...", "level":"INFO", "event":"health_check", "checks":{...}}
+
+# CI matrix:
+Python 3.11 + 3.12 → compileall + pytest → Docker build → Trivy scan
+```
+
+---
+
+## ⚙️ Configuración activa
+
+- **API Key**: `DEEPSEEK_API_KEY` configurada en `~/.hpd/.env`
+- **Modelo**: `deepseek-chat`
+- **Rate limit**: 30 requests / 60s ventana (configurable vía `RATE_LIMIT_WINDOW_SECONDS` y `RATE_LIMIT_MAX_REQUESTS`)
+- **CORS**: `http://localhost:5173,http://localhost:3000` (default)
+- **JSON log**: `HPD_JSON_LOG=true` para logging estructurado
+- **Docker**: Usuario `hpd`, multi-stage, `.dockerignore`
+
+---
+
+## 📋 Recomendaciones para escalar HPD AI / hpd-cli-core
+
+### 🟡 Prioridad media (próximas candidatas)
+
+| # | Tarea | Impacto |
+|---|-------|---------|
+| 1 | **Base de datos y migraciones** | SQLAlchemy ya en deps pero sin uso. Definir modelos + Alembic |
+| 2 | **API versionada** | Migrar `/api/...` → `/api/v1/...` para evolución sin romper |
+| 3 | **Manejo de secretos** | Migrar de `.env` a vault (Doppler, Bitwarden, o GPG cifrado) |
+| 4 | **Dashboard web** | UI simple con métricas Prometheus visibles |
+| 5 | **Autocompletado CLI** | Completado para `hpd` (argparse-completion) |
+| 6 | **OpenAPI docs** | Documentar endpoints existentes para `/docs` de FastAPI |
+
 > [!IMPORTANT]
-> El sistema está en estado **VERDE** para la ruta de IA y control plane. No se permiten cambios que rompan la integración de DeepSeek ni el flujo del CLI.
+> El sistema está en estado **VERDE** — 68 tests pasando, CI con 2 versiones de Python + Docker + Trivy, logging JSON estructurado, métricas Prometheus, contenedor seguro con usuario no-root, API keys funcionales, rate limiting activo.
