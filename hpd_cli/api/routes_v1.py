@@ -1,7 +1,5 @@
 """API v1 versioned routes."""
 import os
-import time
-from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Security, Request
 from fastapi.security.api_key import APIKeyHeader
@@ -15,6 +13,7 @@ from hpd_cli.api.system_checks import (
     are_secrets_git_ignored,
     is_ollama_fallback,
 )
+from hpd_cli.cache import check_rate_limit
 from hpd_cli.logger import log_json
 
 
@@ -64,22 +63,18 @@ router = APIRouter(prefix="/api/v1")
 
 api_key_header = APIKeyHeader(name="X-HPD-Token", auto_error=False)
 
-# Rate limiter (ventana deslizante en memoria)
+# Rate limiter (Redis o en memoria con fallback)
 RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "30"))
-_request_log: defaultdict = defaultdict(list)
 
 
 def _rate_limit(request: Request):
     client_ip = request.client.host if request.client else "unknown"
-    now = time.time()
-    window_start = now - RATE_LIMIT_WINDOW
-    _request_log[client_ip] = [t for t in _request_log[client_ip] if t > window_start]
-    if len(_request_log[client_ip]) >= RATE_LIMIT_MAX:
+    allowed, _ = check_rate_limit(client_ip, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW)
+    if not allowed:
         raise HTTPException(
             status_code=429, detail="Demasiadas solicitudes. Intenta de nuevo mas tarde."
         )
-    _request_log[client_ip].append(now)
 
 
 def _get_api_key(api_key: str = Security(api_key_header)):

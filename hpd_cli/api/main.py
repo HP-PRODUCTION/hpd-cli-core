@@ -1,8 +1,6 @@
 import os
-import time
 import json
 from pathlib import Path
-from collections import defaultdict
 from fastapi import FastAPI, Depends, HTTPException, Security, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +17,8 @@ from hpd_cli.api.system_checks import (
 from hpd_cli.api.metrics import prometheus_metrics, metrics_endpoint
 from hpd_cli.api.routes_v1 import router as router_v1
 from hpd_cli.auth.routes import router as auth_router
+from hpd_cli.api.task_routes import router as task_router
+from hpd_cli.cache import check_rate_limit
 from hpd_cli.logger import log_json
 
 app = FastAPI(
@@ -49,6 +49,7 @@ app = FastAPI(
         {"name": "system", "description": "Estado y monitoreo del sistema"},
         {"name": "dashboard", "description": "Datos para el panel de control web"},
         {"name": "auth", "description": "Autenticacion JWT (login, refresh, verify)"},
+        {"name": "tasks", "description": "Tareas asincronas en background"},
         {"name": "legacy", "description": "Endpoints legacy para compatibilidad hacia atras"},
     ],
 )
@@ -58,20 +59,16 @@ app.middleware("http")(prometheus_metrics)
 
 api_key_header = APIKeyHeader(name="X-HPD-Token", auto_error=False)
 
-# Rate limiter simple (ventana deslizante en memoria)
+# Rate limiter (Redis o en memoria con fallback)
 RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "30"))
-_request_log: defaultdict = defaultdict(list)
 
 def rate_limit(request: Request):
     client_ip = request.client.host if request.client else "unknown"
-    now = time.time()
-    window_start = now - RATE_LIMIT_WINDOW
-    # Limpiar entradas viejas
-    _request_log[client_ip] = [t for t in _request_log[client_ip] if t > window_start]
-    if len(_request_log[client_ip]) >= RATE_LIMIT_MAX:
+    allowed, remaining = check_rate_limit(client_ip, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW)
+    if not allowed:
         raise HTTPException(status_code=429, detail="Demasiadas solicitudes. Intenta de nuevo más tarde.")
-    _request_log[client_ip].append(now)
+    return remaining
 
 def get_api_key(api_key: str = Security(api_key_header)):
     expected_token = os.environ.get("HPD_UI_TOKEN")
@@ -112,6 +109,9 @@ app.include_router(router_v1)
 
 # --- Rutas de autenticacion ---
 app.include_router(auth_router)
+
+# --- Rutas de tareas asincronas ---
+app.include_router(task_router)
 
 # --- Rutas legacy (backward compatible) ---
 
