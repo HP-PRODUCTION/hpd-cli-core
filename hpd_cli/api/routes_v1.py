@@ -163,13 +163,16 @@ def get_dashboard_data(
             "disk_total_gb": round(disk.total / (1024**3), 2),
         },
         "health": {
-            "deepseekApiKeySet": is_deepseek_key_set(),
-            "dockerDaemon": is_docker_running(),
             "hostPostgres": is_postgres_active(),
+            "dockerDaemon": is_docker_running(),
+            "secureEnvPerms": has_secure_env_perms(),
+            "deepseekApiKeySet": is_deepseek_key_set(),
+            "gitIgnoredSecrets": are_secrets_git_ignored(),
             "localOllamaModel": is_ollama_fallback(),
         },
         "version": {
             "api": "v1",
             "app": "HPD Control Plane",
+            "version": "0.1.0",
         },
     }
