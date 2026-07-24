@@ -20,7 +20,36 @@ from hpd_cli.api.metrics import prometheus_metrics, metrics_endpoint
 from hpd_cli.api.routes_v1 import router as router_v1
 from hpd_cli.logger import log_json
 
-app = FastAPI(title="HPD Control Plane API", version="0.2.0")
+app = FastAPI(
+    title="HPD Control Plane API",
+    description="""API del **HPD Control Plane** - Centro de mando para HPD Platform Engine.
+
+## Endpoints disponibles
+- `/api/v1/system/health` — Estado de todos los servicios
+- `/api/v1/version` — Version del API y aplicacion
+- `/api/v1/dashboard/data` — Metricas del sistema para el dashboard
+- `/api/system/health` (legacy) — Version anterior del health check
+- `/metrics` — Metricas Prometheus
+- `/dashboard/` — Interfaz web del Control Plane (React SPA)
+""",
+    version="0.2.0",
+    contact={
+        "name": "HP Production",
+        "url": "https://github.com/HP-PRODUCTION/hpd-cli-core",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    servers=[{"url": "/", "description": "Default server"}],
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_tags=[
+        {"name": "system", "description": "Estado y monitoreo del sistema"},
+        {"name": "dashboard", "description": "Datos para el panel de control web"},
+        {"name": "legacy", "description": "Endpoints legacy para compatibilidad hacia atras"},
+    ],
+)
 
 # Middleware de métricas Prometheus
 app.middleware("http")(prometheus_metrics)
@@ -81,9 +110,9 @@ app.include_router(router_v1)
 
 # --- Rutas legacy (backward compatible) ---
 
-@app.get("/api/system/health")
+@app.get("/api/system/health", tags=["legacy"])
 def get_system_health_legacy(api_key: str = Depends(get_api_key), _=Depends(rate_limit)):
-    """DEPRECATED: usar /api/v1/system/health"""
+    """[DEPRECATED] Usar /api/v1/system/health en su lugar. Se eliminara en v2."""
     result = {
         "hostPostgres": is_postgres_active(),
         "dockerDaemon": is_docker_running(),
@@ -95,6 +124,6 @@ def get_system_health_legacy(api_key: str = Depends(get_api_key), _=Depends(rate
     log_json("INFO", "health_check", checks=result)
     return result
 
-@app.get("/metrics")
+@app.get("/metrics", tags=["legacy"])
 async def get_metrics(request: Request):
     return await metrics_endpoint(request)

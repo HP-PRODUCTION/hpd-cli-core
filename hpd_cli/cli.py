@@ -33,6 +33,7 @@ from hpd_cli.commands import (
 import os
 import hashlib
 import importlib.util
+import argcomplete
 
 
 # Lista blanca de hashes SHA-256 de plugins permitidos (vacia = solo plugins firmados)
@@ -122,6 +123,19 @@ def main():
     # Load Plugins dynamically
     load_plugins(subparsers)
 
+    # Comando de autocompletado
+    completion_parser = subparsers.add_parser(
+        "completion",
+        help="Configurar autocompletado con tab para el shell",
+    )
+    completion_parser.add_argument(
+        "shell",
+        nargs="?",
+        default="bash",
+        choices=["bash", "zsh", "fish", "tcsh"],
+        help="Shell para configurar (default: bash)",
+    )
+
     # fallback if no arguments are passed
     if len(sys.argv) == 1:
         from rich.panel import Panel
@@ -140,10 +154,24 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    # Autocompletado con tab (argcomplete)
+    argcomplete.autocomplete(parser)
+
     args = parser.parse_args()
     logger.configure(quiet=args.quiet, verbose=args.verbose)
 
     # Dispatch execution
+    if args.command == "completion":
+        shells = {
+            "bash": 'eval "$(register-python-argcomplete hpd)"',
+            "zsh": 'eval "$(register-python-argcomplete --shell zsh hpd)"',
+            "fish": 'register-python-argcomplete --shell fish hpd | source',
+            "tcsh": 'eval "`register-python-argcomplete --shell tcsh hpd`"',
+        }
+        print(f"# Agrega esta linea a tu ~/.{args.shell}rc:\n")
+        print(shells.get(args.shell, shells["bash"]))
+        sys.exit(0)
+
     if hasattr(args, "func"):
         result = args.func(args)
         if isinstance(result, int):

@@ -5,6 +5,8 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Security, Request
 from fastapi.security.api_key import APIKeyHeader
+from pydantic import BaseModel
+
 from hpd_cli.api.system_checks import (
     is_postgres_active,
     is_docker_running,
@@ -14,6 +16,49 @@ from hpd_cli.api.system_checks import (
     is_ollama_fallback,
 )
 from hpd_cli.logger import log_json
+
+
+# --- Pydantic models ---
+
+class HealthCheckResponse(BaseModel):
+    """Respuesta del health check del sistema."""
+    hostPostgres: bool
+    dockerDaemon: bool
+    secureEnvPerms: bool
+    deepseekApiKeySet: bool
+    gitIgnoredSecrets: bool
+    localOllamaModel: bool
+
+
+class VersionResponse(BaseModel):
+    """Informacion de version del API."""
+    api: str
+    app: str
+    version: str
+
+
+class SystemMetrics(BaseModel):
+    """Metricas del sistema."""
+    hostname: str
+    platform: str
+    uptime_seconds: int
+    cpu_percent: float
+    memory_percent: float
+    memory_used_gb: float
+    memory_total_gb: float
+    disk_percent: float
+    disk_used_gb: float
+    disk_total_gb: float
+
+
+class DashboardDataResponse(BaseModel):
+    """Datos completos para el dashboard web."""
+    system: SystemMetrics
+    health: HealthCheckResponse
+    version: VersionResponse
+
+
+# --- Router ---
 
 router = APIRouter(prefix="/api/v1")
 
@@ -44,12 +89,20 @@ def _get_api_key(api_key: str = Security(api_key_header)):
     return api_key
 
 
-@router.get("/system/health")
+@router.get(
+    "/system/health",
+    response_model=HealthCheckResponse,
+    tags=["system"],
+    summary="Health check del sistema",
+    description="""Verifica el estado de todos los servicios y componentes del sistema HPD.
+
+**Retorna:** estado de PostgreSQL, Docker, permisos de env, API key de DeepSeek,
+secrets en .gitignore y modelo Ollama local.""",
+)
 def get_system_health(
     api_key: str = Depends(_get_api_key),
     _=Depends(_rate_limit),
 ):
-    """Health check del sistema HPD. Requiere X-HPD-Token si esta configurado."""
     result = {
         "hostPostgres": is_postgres_active(),
         "dockerDaemon": is_docker_running(),
@@ -62,9 +115,14 @@ def get_system_health(
     return result
 
 
-@router.get("/version")
+@router.get(
+    "/version",
+    response_model=VersionResponse,
+    tags=["system"],
+    summary="Version del API",
+    description="Retorna la version actual del API y la aplicacion.",
+)
 def get_version():
-    """Informacion de version del API."""
     return {
         "api": "v1",
         "app": "HPD Control Plane",
@@ -72,15 +130,24 @@ def get_version():
     }
 
 
-@router.get("/dashboard/data")
+@router.get(
+    "/dashboard/data",
+    response_model=DashboardDataResponse,
+    tags=["dashboard"],
+    summary="Metricas del sistema para el dashboard",
+    description="""Retorna datos agregados del sistema para alimentar el dashboard web.
+
+**Incluye:**
+- **system**: hostname, uptime, CPU, memoria y uso de disco
+- **health**: estado de servicios (PostgreSQL, Docker, DeepSeek, etc.)
+- **version**: version del API y aplicacion""",
+)
 def get_dashboard_data(
     _=Depends(_get_api_key),
 ):
-    """Datos agregados para el dashboard UI."""
     import psutil
     import datetime
 
-    # Sistema
     boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
     uptime = datetime.datetime.now() - boot_time
     cpu_percent = psutil.cpu_percent(interval=0.1)
