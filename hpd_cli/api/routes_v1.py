@@ -70,3 +70,44 @@ def get_version():
         "app": "HPD Control Plane",
         "version": "0.1.0",
     }
+
+
+@router.get("/dashboard/data")
+def get_dashboard_data(
+    _=Depends(_get_api_key),
+):
+    """Datos agregados para el dashboard UI."""
+    import psutil
+    import datetime
+
+    # Sistema
+    boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
+    uptime = datetime.datetime.now() - boot_time
+    cpu_percent = psutil.cpu_percent(interval=0.1)
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+
+    return {
+        "system": {
+            "hostname": os.uname().nodename,
+            "platform": os.uname().sysname,
+            "uptime_seconds": int(uptime.total_seconds()),
+            "cpu_percent": cpu_percent,
+            "memory_percent": memory.percent,
+            "memory_used_gb": round(memory.used / (1024**3), 2),
+            "memory_total_gb": round(memory.total / (1024**3), 2),
+            "disk_percent": disk.percent,
+            "disk_used_gb": round(disk.used / (1024**3), 2),
+            "disk_total_gb": round(disk.total / (1024**3), 2),
+        },
+        "health": {
+            "deepseekApiKeySet": is_deepseek_key_set(),
+            "dockerDaemon": is_docker_running(),
+            "hostPostgres": is_postgres_active(),
+            "localOllamaModel": is_ollama_fallback(),
+        },
+        "version": {
+            "api": "v1",
+            "app": "HPD Control Plane",
+        },
+    }

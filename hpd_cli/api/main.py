@@ -1,8 +1,11 @@
 import os
 import time
+import json
+from pathlib import Path
 from collections import defaultdict
 from fastapi import FastAPI, Depends, HTTPException, Security, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from hpd_cli.api.system_checks import (
@@ -57,6 +60,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Dashboard Web UI (React SPA) ---
+DIST_DIR = Path(__file__).resolve().parent.parent.parent / "control-plane" / "dist"
+if DIST_DIR.exists() and (DIST_DIR / "index.html").exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/dashboard", StaticFiles(directory=str(DIST_DIR), html=True), name="dashboard")
+    app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")
+
+    @app.get("/")
+    async def root_redirect():
+        return RedirectResponse(url="/dashboard/index.html")
+else:
+    @app.get("/")
+    async def root_ok():
+        return {"status": "ok", "app": "HPD Control Plane API", "docs": "/docs"}
 
 # --- Rutas versionadas (v1) ---
 app.include_router(router_v1)

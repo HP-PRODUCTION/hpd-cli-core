@@ -84,10 +84,21 @@ def ensure_config():
 def validate_env():
     from hpd_cli import logger
     from dotenv import load_dotenv
-    # Cargar .env_hpd global y .env local
-    global_env = os.path.expanduser("~/.hpd/.env_hpd")
-    if os.path.exists(global_env):
-        load_dotenv(global_env)
+
+    # Auto-descifrar vault GPG si existe .env.gpg y no hay .env
+    hpd_env = os.path.expanduser("~/.hpd/.env")
+    hpd_env_gpg = os.path.expanduser("~/.hpd/.env.gpg")
+    if not os.path.exists(hpd_env) and os.path.exists(hpd_env_gpg):
+        try:
+            from hpd_cli.commands.vault import ensure_env_decrypted
+            if ensure_env_decrypted():
+                logger.info("🔐 Secretos descifrados automáticamente desde .env.gpg")
+        except Exception:
+            logger.warning("No se pudo descifrar .env.gpg automáticamente")
+
+    # Cargar ~/.hpd/.env global y .env local
+    if os.path.exists(hpd_env):
+        load_dotenv(hpd_env)
 
     local_env = ".env"
     if os.path.exists(local_env):

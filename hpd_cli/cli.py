@@ -28,6 +28,7 @@ from hpd_cli.commands import (
     diagnose,
     run,
     suggest,
+    vault,
 )
 import os
 import hashlib
@@ -116,6 +117,7 @@ def main():
     diagnose.setup_parser(subparsers)
     run.setup_parser(subparsers)
     suggest.setup_parser(subparsers)
+    vault.setup_parser(subparsers)
 
     # Load Plugins dynamically
     load_plugins(subparsers)
