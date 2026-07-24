@@ -18,6 +18,7 @@ from hpd_cli.api.system_checks import (
 )
 from hpd_cli.api.metrics import prometheus_metrics, metrics_endpoint
 from hpd_cli.api.routes_v1 import router as router_v1
+from hpd_cli.auth.routes import router as auth_router
 from hpd_cli.logger import log_json
 
 app = FastAPI(
@@ -47,6 +48,7 @@ app = FastAPI(
     openapi_tags=[
         {"name": "system", "description": "Estado y monitoreo del sistema"},
         {"name": "dashboard", "description": "Datos para el panel de control web"},
+        {"name": "auth", "description": "Autenticacion JWT (login, refresh, verify)"},
         {"name": "legacy", "description": "Endpoints legacy para compatibilidad hacia atras"},
     ],
 )
@@ -107,6 +109,9 @@ else:
 
 # --- Rutas versionadas (v1) ---
 app.include_router(router_v1)
+
+# --- Rutas de autenticacion ---
+app.include_router(auth_router)
 
 # --- Rutas legacy (backward compatible) ---
 
