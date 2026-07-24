@@ -1,11 +1,37 @@
-name: CI
+name: CI/CD
 
 on:
   push:
+    branches: [master, develop]
   pull_request:
+    branches: [master]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # === Lint & Quality ======================================
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip install ruff
+      - name: Lint with ruff
+        run: python -m ruff check hpd_cli/ --ignore=E501,F401
+      - name: Compile check
+        run: python -m compileall -q hpd_cli
+
+  # === Tests ===============================================
   test:
+    needs: lint
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -20,22 +46,66 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
-      - name: Compile check
-        run: python -m compileall -q hpd_cli
-      - name: Tests
-        run: python -m pytest -q --tb=short
+      - name: Tests with coverage
+        run: |
+          python -m pip install pytest-cov
+          python -m pytest -q --tb=short --cov=hpd_cli --cov-report=term-missing
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: .coverage
+          retention-days: 7
 
+  # === Docker Build & Security Scan ========================
   docker:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker build -t hpd-cli-core .
+        run: docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: "hpd-cli-core"
+          image-ref: "${{ env.IMAGE_NAME }}:${{ github.sha }}"
           format: "table"
           exit-code: "1"
           ignore-unfixed: true
           severity: "HIGH,CRITICAL"
+      - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/master'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push Docker image
+        if: github.ref == 'refs/heads/master'
+        run: |
+          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  # === Deploy to VPS (master only) ==========================
+  deploy:
+    needs: [test, docker]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/hpd/hpd-cli-core
+            git pull origin master
+            pip install -e . --break-system-packages --ignore-installed typing_extensions
+            systemctl restart hpd-api
+            sleep 3
+            curl -sf http://localhost:3100/api/v1/system/health || exit 1
+            echo "Deploy OK"
