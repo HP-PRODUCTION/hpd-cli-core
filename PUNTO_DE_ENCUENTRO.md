@@ -53,11 +53,13 @@
 
 ## 🚀 Próximos Pasos (Backlog Inmediato)
 
-1. **Despliegue operativo en VPS**
-    - ✅ Instalación del CLI vía `pip install -e .`.
-    - ✅ Configuración de `~/.hpd/.env` con DeepSeek.
-    - ⬜ Automatizar el arranque del CLI en servicio de la VPS.
-    - ⬜ Añadir un script de despliegue para sincronizar proyectos desde la VPS.
+1. **Consolidación post-sync**
+    - ✅ Sincronización bidireccional local ↔ VPS completada.
+    - ✅ Integrados 6 comandos desde VPS (autonomous, agent, diagnose, projects, run, suggest).
+    - ✅ 68 tests pasando, push a GitHub, VPS actualizada.
+    - ⬜ **Merge robust-cli-2026 → master** para unificar ramas.
+    - ⬜ **Systemd service** para `hpd api` en VPS.
+    - ⬜ **Deploy script** automatizado (git pull → install → restart).
 2. **EPIC-WP-STABILIZE-01 — Endurecimiento de plugins editoriales/económicos**
     - T-01 Validar estado de plugins desde WP-CLI.
     - T-02 Crear smoke test operativo para hpd-auto-publicador.
@@ -133,6 +135,35 @@ Python 3.11 + 3.12 → compileall + pytest → Docker build → Trivy scan
 
 ---
 
+---
+
+## 🔄 Sincronización VPS (Completado 2026-07-23)
+
+### EPIC-SYNC-01 — Integración bidireccional local ↔ VPS
+
+| # | Tarea | Estado |
+|---|-------|--------|
+| 1 | **Recuperar módulos experimentales VPS** — 6 archivos: `autonomous.py`, `agent.py`, `diagnose.py`, `projects.py`, `run.py`, `suggest.py` (335 líneas) | ✅ |
+| 2 | **Integrar en CLI local** — imports + `setup_parser` para los 6 comandos nuevos | ✅ |
+| 3 | **Fix import run_command** — `autonomous.py` importaba de `commands.ai` (no existía); corregido a `commands.run` + adaptación string/args | ✅ |
+| 4 | **68 tests pasando** — Verificados post-integración | ✅ |
+| 5 | **Commit + Push** a `origin/robust-cli-2026` (d0cf1c9, 21 archivos, +820 líneas) | ✅ |
+| 6 | **VPS actualizada** — `git checkout -B robust-cli-2026`, `pip install -e .` exitoso | ✅ |
+| 7 | **Verificación VPS** — `hpd --help` muestra los 25 comandos incluyendo `projects`, `agent`, `diagnose`, `run`, `suggest` | ✅ |
+
+### 📦 Módulos recuperados e integrados
+
+| Módulo | Líneas | Descripción |
+|--------|--------|-------------|
+| `hpd_cli/autonomous.py` | 67 | Modo autónomo: ejecuta tareas sin intervención usando IA |
+| `hpd_cli/commands/agent.py` | 39 | Agente interactivo para asistencias contextuales |
+| `hpd_cli/commands/diagnose.py` | 67 | Diagnóstico del sistema (CPU, RAM, disco, Docker) |
+| `hpd_cli/commands/projects.py` | 83 | Inventario de proyectos VPS con metadatos |
+| `hpd_cli/commands/run.py` | 37 | Ejecución segura de comandos con denylist |
+| `hpd_cli/commands/suggest.py` | 46 | Sugerencias de mejora vía DeepSeek |
+
+---
+
 ## ⚙️ Configuración activa
 
 - **API Key**: `DEEPSEEK_API_KEY` configurada en `~/.hpd/.env`
@@ -145,6 +176,14 @@ Python 3.11 + 3.12 → compileall + pytest → Docker build → Trivy scan
 ---
 
 ## 📋 Recomendaciones para escalar HPD AI / hpd-cli-core
+
+### 🟢 Alta prioridad — Consolidación post-sync
+
+| # | Tarea | Impacto |
+|---|-------|---------|
+| 1 | **Merge robust-cli-2026 → master** | Unificar la historia en `master` como rama principal definitiva |
+| 2 | **Systemd service** | Crear unit para `hpd api` como servicio administrable (`systemctl start hpd-api`) |
+| 3 | **Script de deploy automatizado** | `deploy_vps.sh` que haga git pull, reinstale y reinicie servicios |
 
 ### 🟡 Prioridad media (próximas candidatas)
 
