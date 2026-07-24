@@ -1,5 +1,5 @@
 [project]
-name = "hpd-cli-core"
+name = "HPD-CORE"
 version = "0.1.0"
 description = "HPD Control Plane CLI"
 authors = [{name = "HPD Architect"}]

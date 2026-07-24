@@ -2,6 +2,7 @@
 .git
 .gitignore
 .gitattributes
+.github
 
 # Python
 __pycache__/
@@ -30,8 +31,7 @@ venv/
 *~
 
 # Logs & data
-data/logs/
-data/backups/
+data/
 *.log
 *.jsonl
 
@@ -49,3 +49,6 @@ deploy/
 
 # Session state
 .copilot/
+
+# Node
+control-plane/node_modules/

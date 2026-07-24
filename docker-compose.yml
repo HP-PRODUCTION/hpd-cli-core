@@ -1,14 +1,103 @@
-version: '3.8'
+# ============================================================
+# docker-compose.yml — HPD CORE Platform
+# ============================================================
+# Uso:
+#   standalone:  docker compose up -d hpd-api
+#   completo:    docker compose --profile full up -d
+# ============================================================
 
 services:
-  hpd-cli-core:
-    build: .
-    container_name: hpd-cli-core
-    command: uvicorn hpd_cli.api.main:app --host 0.0.0.0 --port 3001 --reload
+  # === API Principal ========================================
+  hpd-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hpd-api
+    hostname: hpd-api
+    command: uvicorn hpd_cli.api.main:app --host 0.0.0.0 --port 3100 --workers 2
     ports:
-      - "3001:3001"
+      - "3100:3100"
     volumes:
-      - ./:/app
+      - hpd-data:/home/hpd/.hpd
+      - hpd-logs:/app/data
     environment:
-      HPD_UI_TOKEN: "${HPD_UI_TOKEN:-cambiar_por_token_seguro}"
+      - HPD_DATABASE_URL=sqlite:////home/hpd/.hpd/hpd.db
+      - HPD_UI_TOKEN=${HPD_UI_TOKEN:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - RATE_LIMIT_WINDOW_SECONDS=60
+      - RATE_LIMIT_MAX_REQUESTS=30
+      - CORS_ORIGINS=http://localhost:3100,http://localhost:5173
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3100/api/v1/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
+    networks:
+      - hpd-net
+
+  # === Redis (caching, rate limiting, sesiones) =============
+  redis:
+    image: redis:7-alpine
+    container_name: hpd-redis
+    hostname: hpd-redis
+    profiles: ["full"]
+    command: redis-server --appendonly yes --save 60 1 --loglevel warning
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - hpd-net
+
+  # === PostgreSQL (base de datos principal) =================
+  postgres:
+    image: postgres:16-alpine
+    container_name: hpd-postgres
+    hostname: hpd-postgres
+    profiles: ["full"]
+    environment:
+      - POSTGRES_USER=hpd
+      - POSTGRES_PASSWORD=${HPD_DB_PASSWORD:-hpd_secret}
+      - POSTGRES_DB=hpd_core
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hpd -d hpd_core"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - hpd-net
+
+# === Volumes ===============================================
+volumes:
+  hpd-data:
+    driver: local
+  hpd-logs:
+    driver: local
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
+
+# === Networks ==============================================
+networks:
+  hpd-net:
+    driver: bridge
+    name: hpd-network
+
