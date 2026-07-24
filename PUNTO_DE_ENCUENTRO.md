@@ -1,7 +1,7 @@
 # 📍 PUNTO DE ENCUENTRO — HPD CORE
 
 **Actualizado:** 24 Julio 2026
-**Estado:** ✅ Ronda 1 (9/9) + Ronda 2 (6/6) + Ronda 3 (7/7) completadas
+**Estado:** ✅ Ronda 1 (9/9) + Ronda 2 (6/6) + Ronda 3 (7/7) + Ronda 4 — Gateway (5/5) completadas
 **Enfoque:** CLI-first — administración y desarrollo desde terminal
 
 ---
@@ -198,6 +198,50 @@ cd HPD-CORE && python -m pytest tests/ -q
 - **WP-MONETIZACION-01**: Anuncios, patrocinios y sostenibilidad
 - **WP-SEO-01**: Schema NewsArticle, Open Graph, News Sitemap
 - **WP-INTEGRATION-01**: Dropshipping Bridge (diferido)
+
+---
+
+---
+
+## 🌐 Ronda 4 — API Gateway Multi-VPS (Traefik) (5/5)
+
+| # | Tarea | Estado |
+|---|-------|--------|
+| 1 | **Config Traefik estática** — entry points, SSL Let's Encrypt, providers Docker + file | ✅ |
+| 2 | **Config Traefik dinámica** — routers, services, middlewares (secHeaders, rateLimit, CORS, circuitBreaker, stripPrefix) | ✅ |
+| 3 | **Docker Compose gateway** — Traefik + Portainer (profile:full) + Whoami debug (profile:debug) | ✅ |
+| 4 | **Script deploy + rollback** — `deploy-gateway.sh` con rollback a Caddy | ✅ |
+| 5 | **Documentación + multi-VPS** — README, ejemplo WireGuard + backend VPS2 | ✅ |
+
+### 🌐 Routing configurado
+
+| Dominio | Destino | Middleware |
+|---------|---------|------------|
+| `ia.matutino.online` | AI Gateway (:3001) | secHeaders, rateLimit |
+| `ia.matutino.online/hpd/*` | HPD API (:3100, strip /hpd) | secHeaders, rateLimit, stripHpdPrefix |
+| `cotidianodia.online` | WordPress (:8082) | secHeaders |
+| `matutino.online` | Blog (:8084) | secHeaders |
+| `traefik.ia.matutino.online` | Dashboard Traefik | secHeaders, dashboardAuth |
+| `portainer.ia.matutino.online` | Portainer (profile:full) | secHeaders, dashboardAuth |
+
+### 🛡️ Middlewares
+
+| Middleware | Función |
+|-----------|---------|
+| `secHeaders` | Security headers (CSP, XSS, frame deny, referrer policy) |
+| `rateLimit` | 30 req/min por IP |
+| `circuitBreaker` | Failover si >50% errores o latencia >5s |
+| `compress` | Gzip (excepto SSE) |
+| `corsHeaders` | CORS para frontend local |
+| `dashboardAuth` | Basic auth para dashboards |
+| `stripHpdPrefix` | Remueve `/hpd` del path hacia HPD API |
+
+### 🔜 Multi-VPS (próximo)
+
+Cuando haya un segundo VPS:
+1. WireGuard VPN entre VPS (ejemplo en `gateway/examples/vpn-wireguard.yml`)
+2. Agregar routers/services en `traefik/dynamic.yml` apuntando a IP interna 10.0.0.x
+3. Recargar Traefik sin downtime: `kill -HUP 1`
 
 ---
 

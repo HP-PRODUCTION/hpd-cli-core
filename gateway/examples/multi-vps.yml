@@ -1,0 +1,69 @@
+# ============================================================
+# multi-vps.yml — Ejemplo: backend en VPS secundario
+# ============================================================
+# Copiar en /gateway/traefik/ y agregar al provider file
+# ============================================================
+#
+# Escenario:
+#   VPS1 (principal):  Traefik, AI Gateway, HPD API
+#   VPS2 (secundario): Workers, dropshipping, Postgres
+#
+# Requisitos:
+#   - WireGuard / VPN entre VPS (ej: /gateway/examples/vpn.yml)
+#   - O conexión directa con IP pública
+# ============================================================
+
+http:
+  routers:
+    # Router para API de dropshipping en VPS secundario
+    dropshipping-api:
+      rule: "Host(`api.dropshipping.matutino.online`)"
+      entryPoints:
+        - websecure
+      service: dropshipping-vps2
+      middlewares:
+        - secHeaders
+        - rateLimit
+      tls:
+        certResolver: letsencrypt
+
+    # Router para workers (monitoreo)
+    dropshipping-workers:
+      rule: "Host(`workers.dropshipping.matutino.online`)"
+      entryPoints:
+        - websecure
+      service: workers-vps2
+      middlewares:
+        - secHeaders
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    # Backend en VPS2 via WireGuard (IP interna 10.0.0.2)
+    dropshipping-vps2:
+      loadBalancer:
+        servers:
+          - url: "http://10.0.0.2:8010"
+        healthCheck:
+          path: /health
+          interval: 30s
+          timeout: 5s
+        # Circuit breaker para failover
+        # Si VPS2 falla, se marca como degradado
+        serversTransport: http
+
+    workers-vps2:
+      loadBalancer:
+        servers:
+          - url: "http://10.0.0.2:8020"
+        healthCheck:
+          path: /health
+          interval: 30s
+          timeout: 5s
+
+# ============================================================
+# Para agregar más VPS:
+# 1. Conectar via WireGuard (ver vpn.yml)
+# 2. Agregar routers + services aquí
+# 3. Recargar Traefik: docker compose exec traefik kill -HUP 1
+# ============================================================

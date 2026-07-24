@@ -1,0 +1,47 @@
+# ============================================================
+# traefik.yml — Traefik Static Configuration
+# ============================================================
+# API Gateway para HPD CORE — multi-VPS, SSL automático
+# ============================================================
+
+global:
+  sendAnonymousUsage: false
+
+# Punto de entrada: HTTP (80) y HTTPS (443)
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+  traefik:
+    address: ":8080"
+
+# Certificados SSL automáticos (Let's Encrypt)
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@cotidianodia.online
+      storage: /etc/traefik/acme/acme.json
+      httpChallenge:
+        entryPoint: web
+
+# Dashboard de Traefik (seguro, solo con auth)
+api:
+  dashboard: true
+  debug: false
+
+# Providers
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: hpd-gateway
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true

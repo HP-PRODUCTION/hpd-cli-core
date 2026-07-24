@@ -1,0 +1,86 @@
+# ============================================================
+# docker-compose.yml — HPD API Gateway (Traefik)
+# ============================================================
+# Despliegue: docker compose --profile full up -d
+# ============================================================
+# NOTA: Detiene Caddy antes de iniciar (comparten puertos 80/443)
+# ============================================================
+
+services:
+  # === Traefik API Gateway ==================================
+  traefik:
+    image: traefik:v3.3
+    container_name: hpd-traefik
+    hostname: hpd-traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"        # HTTP → redirecciona a HTTPS
+      - "443:443"      # HTTPS → routers Traefik
+      - "8080:8080"    # Dashboard (solo interno seguro)
+    networks:
+      - hpd-gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - traefik-acme:/etc/traefik/acme
+      - traefik-logs:/var/log/traefik
+    environment:
+      - TZ=America/Santo_Domingo
+    labels:
+      # Dashboard via Traefik propio
+      - "traefik.enable=true"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === Portainer (gestión visual Docker) ====================
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: hpd-portainer
+    hostname: hpd-portainer
+    profiles: ["full"]
+    restart: unless-stopped
+    networks:
+      - hpd-gateway
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer-data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.ia.matutino.online`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls.certResolver=letsencrypt"
+      - "traefik.http.routers.portainer.middlewares=dashboardAuth@file"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+  # === Whoami (test de routing) =============================
+  whoami:
+    image: traefik/whoami:latest
+    container_name: hpd-whoami
+    profiles: ["debug"]
+    restart: unless-stopped
+    networks:
+      - hpd-gateway
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.ia.matutino.online`)"
+      - "traefik.http.routers.whoami.entrypoints=websecure"
+      - "traefik.http.routers.whoami.tls.certResolver=letsencrypt"
+
+networks:
+  hpd-gateway:
+    driver: bridge
+    name: hpd-gateway
+
+volumes:
+  traefik-acme:
+    driver: local
+  traefik-logs:
+    driver: local
+  portainer-data:
+    driver: local

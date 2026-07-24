@@ -1,0 +1,169 @@
+# ============================================================
+# dynamic.yml — Traefik Dynamic Configuration
+# ============================================================
+# Routers, servicios y middlewares para servicios HPD
+# ============================================================
+
+http:
+  # --- Middlewares ---
+  middlewares:
+
+    secHeaders:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+        customFrameOptionsValue: "SAMEORIGIN"
+
+    rateLimit:
+      rateLimit:
+        average: 30
+        burst: 60
+        period: 1m
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    dashboardAuth:
+      basicAuth:
+        users:
+          - "admin:$2y$10$PLACEHOLDER_CHANGE_ME"  # ⚠️ Generar: htpasswd -nb admin <password>
+
+    circuitBreaker:
+      circuitBreaker:
+        expression: "NetworkErrorRatio() > 0.5 || LatencyAtQuantileMS(50.0) > 5000"
+        checkPeriod: 30s
+        fallbackDuration: 60s
+        recoveryDuration: 120s
+
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+
+    corsHeaders:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+        accessControlAllowOriginList:
+          - "http://localhost:5173"
+          - "http://localhost:3000"
+          - "https://ia.matutino.online"
+        accessControlMaxAge: 86400
+
+    stripHpdPrefix:
+      stripPrefix:
+        prefixes:
+          - /hpd
+        forceSlash: true
+
+  # --- Routers ---
+  routers:
+
+    ai-gateway:
+      rule: "Host(`ia.matutino.online`) && !PathPrefix(`/hpd`)"
+      entryPoints:
+        - websecure
+      service: ai-gateway
+      middlewares:
+        - secHeaders
+        - rateLimit
+      tls:
+        certResolver: letsencrypt
+
+    hpd-api:
+      rule: "Host(`ia.matutino.online`) && PathPrefix(`/hpd`)"
+      entryPoints:
+        - websecure
+      service: hpd-api
+      middlewares:
+        - secHeaders
+        - rateLimit
+        - stripHpdPrefix
+      tls:
+        certResolver: letsencrypt
+
+    cotidianodia:
+      rule: "Host(`cotidianodia.online`)"
+      entryPoints:
+        - websecure
+      service: cotidianodia
+      middlewares:
+        - secHeaders
+      tls:
+        certResolver: letsencrypt
+
+    matutino:
+      rule: "Host(`matutino.online`)"
+      entryPoints:
+        - websecure
+      service: matutino
+      middlewares:
+        - secHeaders
+      tls:
+        certResolver: letsencrypt
+
+    traefik-dashboard:
+      rule: "Host(`traefik.ia.matutino.online`)"
+      entryPoints:
+        - websecure
+      service: api@internal
+      middlewares:
+        - dashboardAuth
+        - secHeaders
+      tls:
+        certResolver: letsencrypt
+
+  # --- Services ---
+  services:
+
+    ai-gateway:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:3001"
+        healthCheck:
+          path: /health
+          interval: 30s
+          timeout: 5s
+        passHostHeader: true
+
+    hpd-api:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:3100"
+        healthCheck:
+          path: /api/v1/system/health
+          interval: 30s
+          timeout: 5s
+        passHostHeader: true
+
+    cotidianodia:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8082"
+        healthCheck:
+          path: /
+          interval: 30s
+          timeout: 5s
+        passHostHeader: true
+
+    matutino:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8084"
+        healthCheck:
+          path: /
+          interval: 30s
+          timeout: 5s
+        passHostHeader: true

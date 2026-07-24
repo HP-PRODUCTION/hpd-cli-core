@@ -1,0 +1,68 @@
+# ============================================================
+# vpn-wireguard.yml — WireGuard multi-VPS
+# ============================================================
+# Ejemplo de conexión VPN entre VPS con WireGuard
+# para comunicación segura VPS1 ↔ VPS2
+# ============================================================
+#
+# Escenario:
+#   VPS1 (principal - Traefik):   62.171.181.88
+#   VPS2 (secundario - workers):  203.0.113.10
+#
+# Red interna: 10.0.0.0/24
+#   VPS1: 10.0.0.1
+#   VPS2: 10.0.0.2
+#
+# Uso: docker compose -f vpn-wireguard.yml up -d
+# ============================================================
+
+services:
+  wireguard:
+    image: linuxserver/wireguard:latest
+    container_name: hpd-wireguard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Santo_Domingo
+    volumes:
+      - ./wireguard-config:/config
+    ports:
+      - "51820:51820/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    restart: unless-stopped
+
+# ============================================================
+# Configuración VPS1 (servidor):
+#
+# /gateway/wireguard-config/wg0.conf:
+#   [Interface]
+#   Address = 10.0.0.1/24
+#   PrivateKey = <VPS1_PRIVATE_KEY>
+#   ListenPort = 51820
+#   
+#   [Peer]
+#   PublicKey = <VPS2_PUBLIC_KEY>
+#   AllowedIPs = 10.0.0.2/32
+#   Endpoint = 203.0.113.10:51820
+#   PersistentKeepalive = 25
+#
+# Configuración VPS2 (cliente):
+#   [Interface]
+#   Address = 10.0.0.2/24
+#   PrivateKey = <VPS2_PRIVATE_KEY>
+#   
+#   [Peer]
+#   PublicKey = <VPS1_PUBLIC_KEY>
+#   AllowedIPs = 10.0.0.0/24
+#   Endpoint = 62.171.181.88:51820
+#   PersistentKeepalive = 25
+# ============================================================
+# 
+# Generar claves:
+#   docker run --rm -it linuxserver/wireguard wg genkey | tee privatekey | wg pubkey > publickey
+# ============================================================
