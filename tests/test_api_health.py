@@ -99,3 +99,31 @@ class TestMetricsEndpoint:
             if line.startswith("hpd_health_checks_total"):
                 val = float(line.split()[-1])
                 assert val >= 0
+
+
+class TestAPIVersioning:
+    """Tests for API versioning (/api/v1/...)"""
+
+    def test_v1_version_endpoint(self):
+        """GET /api/v1/version returns version info."""
+        _request_log.clear()
+        response = client.get("/api/v1/version", headers={"X-HPD-Token": ""})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["api"] == "v1"
+        assert data["app"] == "HPD Control Plane"
+
+    def test_v1_health_endpoint(self):
+        """GET /api/v1/system/health returns health data."""
+        _request_log.clear()
+        response = client.get("/api/v1/system/health", headers={"X-HPD-Token": ""})
+        assert response.status_code == 200
+        data = response.json()
+        assert "deepseekApiKeySet" in data
+        assert "dockerDaemon" in data
+
+    def test_legacy_health_still_works(self):
+        """Old /api/system/health still works (backward compat)."""
+        _request_log.clear()
+        response = client.get("/api/system/health", headers={"X-HPD-Token": ""})
+        assert response.status_code == 200

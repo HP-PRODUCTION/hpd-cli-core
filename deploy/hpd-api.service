@@ -1,0 +1,33 @@
+# Systemd unit for HPD CLI Core API - Control Plane FastAPI
+# Provides: hpd-api.service
+#
+# Install:
+#   cp deploy/hpd-api.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now hpd-api
+#
+# VPS Defaults:
+#   Binary:   /usr/local/bin/uvicorn
+#   WorkDir:  /opt/hpd/hpd-cli-core
+#   EnvFile:  /root/.hpd/.env
+
+[Unit]
+Description=HPD CLI Core API - Control Plane
+Documentation=https://github.com/HP-PRODUCTION/hpd-cli-core
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/hpd/hpd-cli-core
+EnvironmentFile=-/root/.hpd/.env
+ExecStart=/usr/local/bin/uvicorn hpd_cli.api.main:app --host 0.0.0.0 --port 3100 --workers 2
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/hpd-api.log
+StandardError=append:/var/log/hpd-api-error.log
+
+[Install]
+WantedBy=multi-user.target

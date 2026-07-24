@@ -2,6 +2,7 @@ import os
 import time
 from collections import defaultdict
 from fastapi import FastAPI, Depends, HTTPException, Security, Request
+from fastapi.responses import RedirectResponse
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from hpd_cli.api.system_checks import (
@@ -13,9 +14,10 @@ from hpd_cli.api.system_checks import (
     is_ollama_fallback
 )
 from hpd_cli.api.metrics import prometheus_metrics, metrics_endpoint
+from hpd_cli.api.routes_v1 import router as router_v1
 from hpd_cli.logger import log_json
 
-app = FastAPI(title="HPD Control Plane API", version="0.1.0")
+app = FastAPI(title="HPD Control Plane API", version="0.2.0")
 
 # Middleware de métricas Prometheus
 app.middleware("http")(prometheus_metrics)
@@ -56,8 +58,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Rutas versionadas (v1) ---
+app.include_router(router_v1)
+
+# --- Rutas legacy (backward compatible) ---
+
 @app.get("/api/system/health")
-def get_system_health(api_key: str = Depends(get_api_key), _=Depends(rate_limit)):
+def get_system_health_legacy(api_key: str = Depends(get_api_key), _=Depends(rate_limit)):
+    """DEPRECATED: usar /api/v1/system/health"""
     result = {
         "hostPostgres": is_postgres_active(),
         "dockerDaemon": is_docker_running(),
